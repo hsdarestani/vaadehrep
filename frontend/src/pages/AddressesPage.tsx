@@ -17,20 +17,20 @@ export function AddressesPage() {
 
   return (
     <div className="section">
-      <h1>Addresses</h1>
+      <h1>آدرس‌ها</h1>
       <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12, maxWidth: 520, marginBottom: 24 }}>
         <label>
-          <span className="muted">Title</span>
+          <span className="muted">عنوان</span>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Home / Office"
+            placeholder="خانه / محل کار"
             required
             style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #cbd5e1" }}
           />
         </label>
         <label>
-          <span className="muted">Full address</span>
+          <span className="muted">آدرس کامل</span>
           <textarea
             value={fullText}
             onChange={(e) => setFullText(e.target.value)}
@@ -40,17 +40,17 @@ export function AddressesPage() {
           />
         </label>
         <button type="submit" className="button">
-          Save address
+          ذخیره آدرس
         </button>
       </form>
 
       {isLoading ? (
-        <p className="muted">Loading…</p>
+        <p className="muted">در حال بارگذاری…</p>
       ) : (
         <div className="card-grid">
           {(addresses || []).map((address) => (
-            <Card key={address.id} title={address.title || "Address"} description={address.full_text}>
-              <p className="muted">City: {address.city || "N/A"}</p>
+            <Card key={address.id} title={address.title || "آدرس"} description={address.full_text}>
+              <p className="muted">شهر: {address.city || "—"}</p>
             </Card>
           ))}
         </div>

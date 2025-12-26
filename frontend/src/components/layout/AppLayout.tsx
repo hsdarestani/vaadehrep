@@ -8,7 +8,8 @@ type Props = {
 const navLinks = [
   { to: "/#menu", label: "منوی روز" },
   { to: "/#mission", label: "داستان ما" },
-  { to: "/#cooperation", label: "همکاری" },
+  { to: "/vendor", label: "همکاری با وعده" },
+  { to: "/#cooperation", label: "B2B" },
   { to: "/orders", label: "سفارش‌ها" },
   { to: "/addresses", label: "آدرس‌ها" },
   { to: "/profile", label: "پروفایل" },

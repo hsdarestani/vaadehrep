@@ -5,16 +5,16 @@ export function ProfilePage() {
 
   return (
     <div className="section">
-      <h1>Profile</h1>
+      <h1>پروفایل</h1>
       {user ? (
         <>
-          <p className="muted">Logged in as {user.phone}</p>
+          <p className="muted">وارد شده با شماره {user.phone}</p>
           <button className="button" onClick={logout}>
-            Logout
+            خروج
           </button>
         </>
       ) : (
-        <p className="muted">Not logged in.</p>
+        <p className="muted">حساب کاربری فعال نیست.</p>
       )}
     </div>
   );
