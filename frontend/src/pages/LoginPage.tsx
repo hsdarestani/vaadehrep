@@ -1,4 +1,5 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../state/auth";
 
@@ -6,7 +7,16 @@ export function LoginPage() {
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [step, setStep] = useState<"request" | "verify">("request");
-  const { requestOtp, verifyOtp, loading } = useAuth();
+  const { requestOtp, verifyOtp, loading, user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const redirectTo = (location.state as { from?: string })?.from || "/";
+
+  useEffect(() => {
+    if (user) {
+      navigate(redirectTo, { replace: true });
+    }
+  }, [navigate, redirectTo, user]);
 
   const handleRequest = async (event: FormEvent) => {
     event.preventDefault();
@@ -17,6 +27,7 @@ export function LoginPage() {
   const handleVerify = async (event: FormEvent) => {
     event.preventDefault();
     await verifyOtp(phone, code);
+    navigate(redirectTo, { replace: true });
   };
 
   return (
