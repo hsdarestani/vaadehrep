@@ -20,11 +20,15 @@ export type Product = {
   id: number;
   vendor: number;
   category: number | null;
-  name: string;
+  name_fa: string;
+  name_en?: string;
   short_description?: string;
   description?: string;
-  price_amount?: number;
+  base_price?: number;
   sort_order?: number;
+  is_active?: boolean;
+  is_available?: boolean;
+  is_available_today?: boolean;
 };
 
 export type Address = {

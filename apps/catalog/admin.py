@@ -1,8 +1,13 @@
 from django.contrib import admin
 from .models import (
-    Category, Product, ProductImage,
-    OptionGroup, OptionItem, ProductOptionGroup,
+    Category,
+    OptionGroup,
+    OptionItem,
+    Product,
     ProductAvailability,
+    ProductImage,
+    ProductOptionGroup,
+    ProductVariant,
 )
 
 
@@ -19,6 +24,12 @@ class ProductImageInline(admin.TabularInline):
     extra = 0
 
 
+class ProductVariantInline(admin.TabularInline):
+    model = ProductVariant
+    extra = 0
+    fields = ("name", "code", "price_amount", "is_active", "sort_order")
+
+
 class ProductOptionGroupInline(admin.TabularInline):
     model = ProductOptionGroup
     extra = 0
@@ -26,11 +37,30 @@ class ProductOptionGroupInline(admin.TabularInline):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ("id", "vendor", "name", "category", "price_amount", "is_active", "is_available", "sort_order", "updated_at")
-    list_filter = ("vendor", "is_active", "is_available", "category")
-    search_fields = ("name", "vendor__name")
-    ordering = ("vendor", "sort_order", "name")
-    inlines = [ProductImageInline, ProductOptionGroupInline]
+    list_display = (
+        "id",
+        "vendor",
+        "name_fa",
+        "category",
+        "base_price",
+        "is_active",
+        "is_available",
+        "is_available_today",
+        "sort_order",
+        "updated_at",
+    )
+    list_filter = ("vendor", "is_active", "is_available", "is_available_today", "category")
+    search_fields = ("name_fa", "name_en", "vendor__name")
+    ordering = ("vendor", "sort_order", "name_fa")
+    inlines = [ProductVariantInline, ProductImageInline, ProductOptionGroupInline]
+
+
+@admin.register(ProductVariant)
+class ProductVariantAdmin(admin.ModelAdmin):
+    list_display = ("id", "product", "code", "name", "price_amount", "is_active", "sort_order", "updated_at")
+    list_filter = ("is_active", "product__vendor")
+    search_fields = ("code", "name", "product__name_fa", "product__vendor__name")
+    ordering = ("product", "sort_order", "code")
 
 
 @admin.register(OptionGroup)
@@ -53,4 +83,3 @@ class OptionItemAdmin(admin.ModelAdmin):
 class ProductAvailabilityAdmin(admin.ModelAdmin):
     list_display = ("id", "product", "weekday", "start_time", "end_time", "is_active")
     list_filter = ("weekday", "is_active", "product__vendor")
-

@@ -11,11 +11,20 @@ class Vendor(models.Model):
     name = models.CharField(max_length=200)
     slug = models.SlugField(max_length=220, unique=True)
 
+    # وضعیت‌ها
     is_active = models.BooleanField(default=True)
+    is_visible = models.BooleanField(default=True)
     is_accepting_orders = models.BooleanField(default=True)
 
+    # اطلاعات مکانی/آدرس
+    address_text = models.CharField(max_length=500, blank=True, default="")
+    city = models.CharField(max_length=120, blank=True, default="")
+    area = models.CharField(max_length=120, blank=True, default="")
+    lat = models.FloatField(null=True, blank=True)
+    lng = models.FloatField(null=True, blank=True)
+
     # اطلاعات تماس/مسئول شیفت
-    phone_number = models.CharField(max_length=32, blank=True, default="")
+    primary_phone_number = models.CharField(max_length=32, blank=True, default="")
     telegram_chat_id = models.CharField(max_length=64, blank=True, default="")  # برای اعلان‌های vendor
 
     # برندینگ/نمایش
@@ -26,17 +35,49 @@ class Vendor(models.Model):
     prep_time_minutes_default = models.PositiveSmallIntegerField(default=20)
     min_order_amount = models.PositiveIntegerField(default=0)  # ریال/تومان بر اساس واحد پروژه
     max_active_orders = models.PositiveSmallIntegerField(default=0)  # 0 یعنی محدودیت ندارد
+    supports_in_zone_delivery = models.BooleanField(default=True)
+    supports_out_of_zone_snapp_cod = models.BooleanField(default=False)
+
+    delivery_zones = models.ManyToManyField(
+        "addresses.DeliveryZone",
+        through="vendors.VendorDeliveryZone",
+        related_name="vendors",
+        blank=True,
+    )
+
+    admin_notes = models.TextField(blank=True, default="")
 
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         indexes = [
-            models.Index(fields=["is_active", "is_accepting_orders"]),
+            models.Index(fields=["is_active", "is_visible", "is_accepting_orders"]),
             models.Index(fields=["slug"]),
         ]
 
     def __str__(self):
         return self.name
+
+
+class VendorDeliveryZone(models.Model):
+    """
+    ارتباط Vendor با DeliveryZone با قابلیت فعال/غیرفعال کردن.
+    """
+
+    vendor = models.ForeignKey("vendors.Vendor", on_delete=models.CASCADE, related_name="vendor_zones")
+    zone = models.ForeignKey("addresses.DeliveryZone", on_delete=models.CASCADE, related_name="vendor_zones")
+
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = [("vendor", "zone")]
+        indexes = [
+            models.Index(fields=["vendor", "zone", "is_active"]),
+        ]
+
+    def __str__(self):
+        return f"{self.vendor_id}:{self.zone_id}"
 
 
 class VendorLocation(models.Model):
@@ -120,4 +161,3 @@ class VendorStaff(models.Model):
 
     def __str__(self):
         return f"{self.vendor_id}:{self.user_id}:{self.role}"
-
