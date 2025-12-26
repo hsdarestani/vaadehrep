@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -22,12 +23,13 @@ sys.path.insert(0, str(BASE_DIR / "apps"))
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-6o$8%ea=!^!p+qgj_m5yo$4$qrwwz3_zjqxf%l$8kv^2#pgd91'
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-change-me")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DJANGO_DEBUG", "True") == "True"
 
-ALLOWED_HOSTS = ['127.0.0.1','vaadeh.com','www.vaadeh.com','api.vaadeh.com','www.api.vaadeh.com']
+_default_allowed_hosts = "127.0.0.1,vaadeh.com,www.vaadeh.com,api.vaadeh.com,www.api.vaadeh.com"
+ALLOWED_HOSTS = [host for host in os.getenv("DJANGO_ALLOWED_HOSTS", _default_allowed_hosts).split(",") if host]
 
 
 # Application definition
@@ -99,11 +101,11 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": "vaadeh",
-        "USER": "vaadeh",
-        "PASSWORD": "NewStrongPasswordHere", 
-        "HOST": "127.0.0.1",
-        "PORT": "5432",
+        "NAME": os.getenv("POSTGRES_DB", "vaadeh"),
+        "USER": os.getenv("POSTGRES_USER", "vaadeh"),
+        "PASSWORD": os.getenv("POSTGRES_PASSWORD", ""),
+        "HOST": os.getenv("POSTGRES_HOST", "127.0.0.1"),
+        "PORT": os.getenv("POSTGRES_PORT", "5432"),
     }
 }
 AUTH_USER_MODEL = "accounts.User"
@@ -158,3 +160,15 @@ REST_FRAMEWORK = {
     ),
 }
 
+# External integrations
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_ADMIN_CHAT_ID = os.getenv("TELEGRAM_ADMIN_CHAT_ID", "")
+TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+
+SMS_API_KEY = os.getenv("SMS_API_KEY", "")
+SMS_SENDER_NUMBER = os.getenv("SMS_SENDER_NUMBER", "")
+SMS_GATEWAY_BASE_URL = os.getenv("SMS_GATEWAY_BASE_URL", "")
+
+PAYMENT_MERCHANT_ID = os.getenv("PAYMENT_MERCHANT_ID", "")
+PAYMENT_GATEWAY_BASE_URL = os.getenv("PAYMENT_GATEWAY_BASE_URL", "")
+PAYMENT_CALLBACK_SECRET = os.getenv("PAYMENT_CALLBACK_SECRET", "")
