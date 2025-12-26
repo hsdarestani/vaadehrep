@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import { endpoints } from "../api/endpoints";
+import { useLocationStore } from "./location";
 
 export type CartItem = {
   productId: number;
@@ -53,6 +54,7 @@ export const useCheckout = create<CheckoutState>((set, get) => ({
     set({ loading: true });
     const items = getCartItems();
     const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const coords = useLocationStore.getState().coords;
     try {
       await endpoints.createOrder({
         delivery_address: addressId,
@@ -63,6 +65,13 @@ export const useCheckout = create<CheckoutState>((set, get) => ({
           modifiers: item.options,
         })),
         total_amount: total,
+        customer_location: coords
+          ? {
+              latitude: coords.latitude,
+              longitude: coords.longitude,
+              accuracy: coords.accuracy,
+            }
+          : undefined,
       });
       useCart.getState().clear();
     } finally {

@@ -1,14 +1,19 @@
 import { Link, useLocation } from "react-router-dom";
 import { ReactNode } from "react";
 
+import { useAuth } from "../../state/auth";
+
 type Props = {
   children: ReactNode;
 };
 
-const navLinks = [
+const publicLinks = [
   { to: "/#menu", label: "منوی روز" },
   { to: "/#mission", label: "داستان ما" },
   { to: "/vendor", label: "همکاری با وعده" },
+];
+
+const authedLinks = [
   { to: "/orders", label: "سفارش‌ها" },
   { to: "/addresses", label: "آدرس‌ها" },
   { to: "/profile", label: "پروفایل" },
@@ -28,6 +33,8 @@ function isActiveLink(
 
 export function AppLayout({ children }: Props) {
   const location = useLocation();
+  const { user, logout } = useAuth();
+  const navLinks = user ? [...publicLinks, ...authedLinks] : publicLinks;
 
   return (
     <div className="app-shell">
@@ -58,9 +65,20 @@ export function AppLayout({ children }: Props) {
             <Link to="/cart" className="primary-button" aria-label="سبد خرید">
               سبد خرید
             </Link>
-            <Link to="/login" className="secondary-button">
-              ورود / کد پیامکی
-            </Link>
+            {user ? (
+              <>
+                <Link to="/profile" className="secondary-button">
+                  پروفایل
+                </Link>
+                <button className="ghost-button" type="button" onClick={logout}>
+                  خروج
+                </button>
+              </>
+            ) : (
+              <Link to="/login" className="secondary-button">
+                ورود / کد پیامکی
+              </Link>
+            )}
           </div>
         </div>
       </header>
