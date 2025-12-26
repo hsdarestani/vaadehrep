@@ -339,6 +339,114 @@ a {
   font-size: 16px;
 }
 
+.api-section {
+  padding: 60px 0;
+  background: linear-gradient(180deg, rgba(70, 168, 101, 0.07), #fdfcfb 40%);
+}
+
+.api-shell {
+  display: grid;
+  place-items: center;
+}
+
+.api-card {
+  width: min(680px, 100%);
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 28px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.06);
+}
+
+.api-card-head {
+  text-align: center;
+  display: grid;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.api-subtitle {
+  margin: 0;
+  color: #475569;
+  font-size: 15px;
+}
+
+.api-form {
+  display: grid;
+  gap: 14px;
+}
+
+.input-label {
+  display: grid;
+  gap: 6px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.input-field {
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: var(--brand-400);
+  box-shadow: 0 0 0 4px rgba(105, 210, 139, 0.15);
+}
+
+.api-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pill-switch {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  display: inline-flex;
+  padding: 6px;
+  gap: 8px;
+}
+
+.pill-option {
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  border-radius: 12px;
+  font-weight: 800;
+  color: #475569;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease;
+}
+
+.pill-option.active {
+  background: var(--brand-600);
+  color: #fff;
+  box-shadow: 0 12px 24px rgba(70, 168, 101, 0.24);
+}
+
+.pill-option:hover {
+  transform: translateY(-1px);
+}
+
+.api-summary {
+  background: #f8fafc;
+  border: 1px dashed #cbeed6;
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .tab-list {
   display: flex;
   gap: 10px;
@@ -933,6 +1041,26 @@ a {
 
 .vendor-note {
   margin-top: 6px;
+}
+
+.cart-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 8px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.cart-summary {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: linear-gradient(90deg, rgba(105, 210, 139, 0.08), #fff);
+  border: 1px solid #e2e8f0;
 }
 
 .vendor-hero-media {

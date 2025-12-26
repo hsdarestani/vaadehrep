@@ -20,40 +20,67 @@ export function LoginPage() {
   };
 
   return (
-    <div className="section">
-      <h1>OTP Login</h1>
-      {step === "request" ? (
-        <form onSubmit={handleRequest} style={{ display: "grid", gap: 12, maxWidth: 360 }}>
-          <label>
-            <span className="muted">Phone number</span>
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              required
-              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #cbd5e1" }}
-            />
-          </label>
-          <button className="button" type="submit" disabled={loading}>
-            {loading ? "Sending..." : "Send OTP"}
-          </button>
-        </form>
-      ) : (
-        <form onSubmit={handleVerify} style={{ display: "grid", gap: 12, maxWidth: 360 }}>
-          <label>
-            <span className="muted">OTP Code</span>
-            <input
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              required
-              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #cbd5e1" }}
-            />
-          </label>
-          <button className="button" type="submit" disabled={loading}>
-            {loading ? "Verifying..." : "Verify"}
-          </button>
-        </form>
-      )}
-    </div>
+    <section className="section api-section">
+      <div className="container small">
+        <div className="api-shell">
+          <div className="api-card">
+            <div className="api-card-head">
+              <span className="section-eyebrow">ورود امن</span>
+              <h1>ورود با رمز یکبار مصرف</h1>
+              <p className="api-subtitle">
+                شماره موبایلت رو وارد کن تا کد پیامکی برات ارسال کنیم؛ بدون رمز، سریع و سالم وارد شو.
+              </p>
+            </div>
+
+            {step === "request" ? (
+              <form onSubmit={handleRequest} className="api-form">
+                <label className="input-label">
+                  <span>شماره موبایل</span>
+                  <input
+                    className="input-field"
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="مثال: ۰۹۱۲۳۴۵۶۷۸۹"
+                    required
+                  />
+                </label>
+
+                <div className="api-actions">
+                  <p className="muted" style={{ margin: 0 }}>
+                    پیامک شامل کد تایید برایت ارسال می‌شود.
+                  </p>
+                  <button className="primary-button" type="submit" disabled={loading}>
+                    {loading ? "در حال ارسال…" : "ارسال کد پیامکی"}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleVerify} className="api-form">
+                <label className="input-label">
+                  <span>کد تایید</span>
+                  <input
+                    className="input-field"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    placeholder="کد ۵ رقمی"
+                    required
+                  />
+                </label>
+
+                <div className="api-actions">
+                  <p className="muted" style={{ margin: 0 }}>
+                    کد برای {phone || "شماره وارد شده"} ارسال شد.
+                  </p>
+                  <button className="primary-button" type="submit" disabled={loading}>
+                    {loading ? "در حال تایید…" : "ورود به حساب"}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
