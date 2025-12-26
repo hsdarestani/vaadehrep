@@ -16,48 +16,67 @@ export function CheckoutPage() {
   };
 
   return (
-    <div className="section">
-      <h1>Checkout</h1>
-      <p className="muted">Confirm your address and payment method.</p>
-      <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12, maxWidth: 480 }}>
-        <label>
-          <span className="muted">Address ID</span>
-          <input
-            value={addressId}
-            onChange={(e) => setAddressId(e.target.value)}
-            placeholder="Use your saved address id"
-            required
-            style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #cbd5e1" }}
-          />
-        </label>
+    <section className="section api-section">
+      <div className="container small">
+        <div className="api-shell">
+          <div className="api-card">
+            <div className="api-card-head">
+              <span className="section-eyebrow">تکمیل سفارش</span>
+              <h1>آدرس و پرداخت</h1>
+              <p className="api-subtitle">
+                جزئیات سفارش را مرور کن و روش پرداختت را انتخاب کن تا غذای سالم به سمتت حرکت کند.
+              </p>
+            </div>
 
-        <label className="muted">Payment method</label>
-        <div style={{ display: "flex", gap: 12 }}>
-          <button
-            type="button"
-            onClick={() => setPaymentMethod("ONLINE")}
-            className="button"
-            style={{ background: paymentMethod === "ONLINE" ? "#2563eb" : "#cbd5e1", color: "white" }}
-          >
-            Online
-          </button>
-          <button
-            type="button"
-            onClick={() => setPaymentMethod("COD")}
-            className="button"
-            style={{ background: paymentMethod === "COD" ? "#2563eb" : "#cbd5e1", color: "white" }}
-          >
-            Cash on delivery
-          </button>
+            <form onSubmit={handleSubmit} className="api-form">
+              <label className="input-label">
+                <span>کد آدرس ذخیره‌شده</span>
+                <input
+                  className="input-field"
+                  value={addressId}
+                  onChange={(e) => setAddressId(e.target.value)}
+                  placeholder="مثال: addr_123"
+                  required
+                />
+              </label>
+
+              <div className="input-label">
+                <span style={{ display: "block", marginBottom: 6 }}>روش پرداخت</span>
+                <div className="pill-switch">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod("ONLINE")}
+                    className={`pill-option ${paymentMethod === "ONLINE" ? "active" : ""}`}
+                  >
+                    پرداخت آنلاین
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod("COD")}
+                    className={`pill-option ${paymentMethod === "COD" ? "active" : ""}`}
+                  >
+                    پرداخت در محل
+                  </button>
+                </div>
+              </div>
+
+              <div className="api-summary">
+                <div>
+                  <p className="muted" style={{ margin: 0 }}>
+                    مبلغ کل
+                  </p>
+                  <strong style={{ fontSize: 20 }}>{formatCurrency(total)}</strong>
+                </div>
+              </div>
+
+              <button className="primary-button" type="submit" disabled={loading}>
+                {loading ? "در حال ثبت…" : "ثبت نهایی سفارش"}
+              </button>
+            </form>
+          </div>
         </div>
-
-        <strong>Total: {formatCurrency(total)}</strong>
-
-        <button className="button" type="submit" disabled={loading}>
-          {loading ? "Submitting…" : "Place order"}
-        </button>
-      </form>
-    </div>
+      </div>
+    </section>
   );
 }
 

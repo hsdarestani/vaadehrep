@@ -366,7 +366,6 @@ export function HomePage() {
           <div className="footer-links">
             <a href="#menu">منو</a>
             <a href="#mission">داستان ما</a>
-            <a href="#cooperation">همکاری</a>
             <Link to="/orders">پیگیری سفارش</Link>
           </div>
           <div className="muted" style={{ fontSize: 12 }}>

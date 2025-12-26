@@ -9,43 +9,63 @@ export function CartPage() {
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
   return (
-    <div className="section">
-      <h1>Your Cart</h1>
-      {items.length === 0 ? (
-        <p className="muted">
-          Cart is empty. <Link to="/menu">Browse the menu</Link>.
-        </p>
-      ) : (
-        <>
-          <div style={{ display: "grid", gap: 12 }}>
-            {items.map((item) => (
-              <div key={item.productId} className="card" style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                <div style={{ flex: 1 }}>
-                  <h3>{item.title}</h3>
-                  <p className="muted">{formatCurrency(item.price)}</p>
-                </div>
-                <input
-                  type="number"
-                  min={1}
-                  value={item.quantity}
-                  onChange={(e) => updateQty(item.productId, Number(e.target.value))}
-                  style={{ width: 80, padding: 8, borderRadius: 8, border: "1px solid #cbd5e1" }}
-                />
-                <button className="link" onClick={() => remove(item.productId)}>
-                  Remove
-                </button>
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <strong>Total: {formatCurrency(total)}</strong>
-            <Link to="/checkout" className="button">
-              Checkout
+    <section className="section">
+      <div className="container small">
+        <div className="section-head" style={{ textAlign: "center" }}>
+          <span className="section-eyebrow">سبد خرید</span>
+          <h1 className="section-title" style={{ marginBottom: 10 }}>
+            انتخاب‌های تازه و سالمت
+          </h1>
+          <p className="section-subtitle">اقلامی که آماده رسیدن به میز تو هستند.</p>
+        </div>
+
+        {items.length === 0 ? (
+          <div className="card" style={{ textAlign: "center", padding: 24 }}>
+            <p className="muted" style={{ marginBottom: 16 }}>
+              سبد خریدت خالیه. <Link to="/menu">منو را ببین</Link> و یک وعده سالم انتخاب کن.
+            </p>
+            <Link to="/menu" className="primary-button">
+              رفتن به منو
             </Link>
           </div>
-        </>
-      )}
-    </div>
+        ) : (
+          <>
+            <div className="card" style={{ display: "grid", gap: 12 }}>
+              {items.map((item) => (
+                <div key={item.productId} className="cart-row">
+                  <div style={{ flex: 1 }}>
+                    <h3>{item.title}</h3>
+                    <p className="muted">{formatCurrency(item.price)}</p>
+                  </div>
+                  <input
+                    type="number"
+                    min={1}
+                    value={item.quantity}
+                    onChange={(e) => updateQty(item.productId, Number(e.target.value))}
+                    className="input-field"
+                    style={{ width: 90 }}
+                  />
+                  <button className="link" onClick={() => remove(item.productId)}>
+                    حذف
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="card cart-summary">
+              <div>
+                <p className="muted" style={{ margin: 0 }}>
+                  مجموع سفارش
+                </p>
+                <strong style={{ fontSize: 20 }}>{formatCurrency(total)}</strong>
+              </div>
+              <Link to="/checkout" className="primary-button">
+                تکمیل خرید
+              </Link>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 
