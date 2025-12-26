@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
-from .models import User, TelegramUser, LoginOTP, UserDevice
+from .models import LoginOTP, TelegramUser, User, UserDevice
 
 
 @admin.register(User)
@@ -41,4 +41,3 @@ class UserDeviceAdmin(admin.ModelAdmin):
     list_display = ("id", "user", "device_id", "title", "ip", "is_active", "last_seen_at")
     search_fields = ("device_id", "user__phone")
     list_filter = ("is_active",)
-

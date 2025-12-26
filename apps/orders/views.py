@@ -2,6 +2,7 @@ from rest_framework import serializers, viewsets
 from rest_framework.permissions import IsAuthenticated
 
 from orders.models import Order, OrderDelivery, OrderItem, OrderStatusHistory
+from orders.services import handle_order_status_change, notify_order_created
 
 
 class OrderSerializer(serializers.ModelSerializer):
@@ -100,7 +101,28 @@ class OrderViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        order = serializer.save(user=self.request.user)
+        OrderStatusHistory.objects.create(
+            order=order,
+            from_status="",
+            to_status=order.status,
+            changed_by_type="CUSTOMER" if self.request.user and not self.request.user.is_staff else "SYSTEM",
+            changed_by_user=self.request.user if self.request.user.is_authenticated else None,
+        )
+        notify_order_created(order)
+
+    def perform_update(self, serializer):
+        prev_status = serializer.instance.status
+        order = serializer.save()
+        if prev_status != order.status:
+            OrderStatusHistory.objects.create(
+                order=order,
+                from_status=prev_status,
+                to_status=order.status,
+                changed_by_type="CUSTOMER" if self.request.user and not self.request.user.is_staff else "SYSTEM",
+                changed_by_user=self.request.user if self.request.user.is_authenticated else None,
+            )
+            handle_order_status_change(order)
 
 
 class OrderItemViewSet(viewsets.ModelViewSet):

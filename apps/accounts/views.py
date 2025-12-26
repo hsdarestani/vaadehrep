@@ -1,8 +1,10 @@
 from django.contrib.auth import get_user_model
-from rest_framework import serializers, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.permissions import IsAdminUser
+from rest_framework.response import Response
 
 from accounts.models import LoginOTP, TelegramUser, UserDevice
+from integrations.services import sms
 
 
 User = get_user_model()
@@ -120,6 +122,19 @@ class LoginOTPViewSet(viewsets.ModelViewSet):
     queryset = LoginOTP.objects.all().order_by("-created_at")
     serializer_class = LoginOTPSerializer
     permission_classes = [IsAdminUser]
+
+    def perform_create(self, serializer):
+        otp = serializer.save()
+        raw_code = self.request.data.get("code") or self.request.data.get("raw_code")
+        if not raw_code:
+            return
+        sms.send_otp(mobile=otp.phone, code=str(raw_code))
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        data = response.data
+        data["message"] = "OTP created and dispatch attempted"
+        return Response(data, status=status.HTTP_201_CREATED)
 
 
 class UserDeviceViewSet(viewsets.ModelViewSet):

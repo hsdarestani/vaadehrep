@@ -1,6 +1,8 @@
 from django.contrib import admin
 from django.urls import path, include
 
+from integrations import views as integration_views
+
 urlpatterns = [
     path("admin/", admin.site.urls),
 
@@ -14,5 +16,14 @@ urlpatterns = [
     path("api/notifications/", include(("apps.notifications.urls", "notifications"), namespace="notifications")),
     path("api/integrations/", include(("apps.integrations.urls", "integrations"), namespace="integrations")),
     path("api/events/", include(("apps.events.urls", "events"), namespace="events")),
+    path(
+        f"telegram/webhook/<str:secret>/",
+        integration_views.telegram_webhook,
+        name="telegram-webhook",
+    ),
+    path(
+        "payments/callback/",
+        integration_views.payment_callback,
+        name="payment-callback",
+    ),
 ]
-
