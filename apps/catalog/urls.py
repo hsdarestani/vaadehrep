@@ -7,6 +7,7 @@ from catalog.views import (
     ProductAvailabilityViewSet,
     ProductImageViewSet,
     ProductOptionGroupViewSet,
+    ProductVariantViewSet,
     ProductViewSet,
 )
 
@@ -18,5 +19,6 @@ router.register(r"option-groups", OptionGroupViewSet)
 router.register(r"option-items", OptionItemViewSet)
 router.register(r"product-option-groups", ProductOptionGroupViewSet)
 router.register(r"product-availability", ProductAvailabilityViewSet)
+router.register(r"product-variants", ProductVariantViewSet)
 
 urlpatterns = router.urls

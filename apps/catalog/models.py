@@ -40,19 +40,21 @@ class Product(models.Model):
     vendor = models.ForeignKey("vendors.Vendor", on_delete=models.CASCADE, related_name="products")
     category = models.ForeignKey("catalog.Category", on_delete=models.SET_NULL, null=True, blank=True, related_name="products")
 
-    name = models.CharField(max_length=180)
-    slug = models.SlugField(max_length=200, blank=True, default="")
+    name_fa = models.CharField(max_length=180)
+    name_en = models.CharField(max_length=180, blank=True, default="")
+    slug = models.SlugField(max_length=200, blank=True, null=True, default=None)
 
     short_description = models.CharField(max_length=240, blank=True, default="")
     description = models.TextField(blank=True, default="")
 
     # قیمت پایه (ریال/تومان مطابق کل پروژه؛ پیشنهاد: ریال در DB، نمایش تومان در UI)
-    price_amount = models.BigIntegerField(default=0)
+    base_price = models.BigIntegerField(default=0)
 
     # نمایش
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
     is_available = models.BooleanField(default=True)  # موجود/ناموجود سریع
+    is_available_today = models.BooleanField(default=True)
 
     # محدودیت‌ها
     min_qty = models.PositiveIntegerField(default=1)
@@ -68,15 +70,15 @@ class Product(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = (("vendor", "name"),)
+        unique_together = (("vendor", "name_fa"), ("vendor", "slug"))
         indexes = [
             models.Index(fields=["vendor", "is_active", "sort_order"]),
             models.Index(fields=["vendor", "category", "is_active"]),
-            models.Index(fields=["vendor", "name"]),
+            models.Index(fields=["vendor", "name_fa"]),
         ]
 
     def __str__(self):
-        return f"{self.vendor_id}:{self.name}"
+        return f"{self.vendor_id}:{self.name_fa}"
 
 
 class ProductImage(models.Model):
@@ -102,6 +104,33 @@ class ProductImage(models.Model):
 
     def __str__(self):
         return f"{self.product_id}:{self.image_url[:40]}"
+
+
+class ProductVariant(models.Model):
+    """
+    سایز/تنوع محصول با قیمت مشخص.
+    """
+
+    product = models.ForeignKey("catalog.Product", on_delete=models.CASCADE, related_name="variants")
+
+    code = models.CharField(max_length=64)
+    name = models.CharField(max_length=120)
+    price_amount = models.BigIntegerField(default=0)
+
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = (("product", "code"),)
+        indexes = [
+            models.Index(fields=["product", "is_active", "sort_order"]),
+        ]
+
+    def __str__(self):
+        return f"{self.product_id}:{self.code}"
 
 
 class OptionGroup(models.Model):
@@ -216,4 +245,3 @@ class ProductAvailability(models.Model):
 
     def __str__(self):
         return f"{self.product_id}:{self.weekday} {self.start_time}-{self.end_time}"
-

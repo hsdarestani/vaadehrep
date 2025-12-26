@@ -40,7 +40,7 @@ export function MenuPage() {
           {sortedProducts.map((product) => (
             <Card
               key={product.id}
-              title={product.name}
+              title={product.name_fa}
               description={product.short_description || product.description}
               footer={
                 <button
@@ -48,8 +48,8 @@ export function MenuPage() {
                   onClick={() =>
                     addToCart({
                       productId: product.id,
-                      title: product.name,
-                      price: product.price_amount || 0,
+                      title: product.name_fa,
+                      price: product.base_price || 0,
                       quantity: 1,
                       options: [],
                     })
@@ -59,7 +59,7 @@ export function MenuPage() {
                 </button>
               }
             >
-              <p style={{ marginTop: 8, fontWeight: 600 }}>{formatCurrency(product.price_amount)}</p>
+              <p style={{ marginTop: 8, fontWeight: 600 }}>{formatCurrency(product.base_price)}</p>
             </Card>
           ))}
         </div>

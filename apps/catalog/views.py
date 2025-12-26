@@ -9,6 +9,7 @@ from catalog.models import (
     ProductAvailability,
     ProductImage,
     ProductOptionGroup,
+    ProductVariant,
 )
 
 
@@ -37,26 +38,31 @@ class CategorySerializer(serializers.ModelSerializer):
 
 
 class ProductSerializer(serializers.ModelSerializer):
+    variants = serializers.PrimaryKeyRelatedField(read_only=True, many=True)
+
     class Meta:
         model = Product
         fields = [
             "id",
             "vendor",
             "category",
-            "name",
+            "name_fa",
+            "name_en",
             "slug",
             "short_description",
             "description",
-            "price_amount",
+            "base_price",
             "sort_order",
             "is_active",
             "is_available",
+            "is_available_today",
             "min_qty",
             "max_qty",
             "calories",
             "protein_g",
             "carbs_g",
             "fat_g",
+            "variants",
             "created_at",
             "updated_at",
         ]
@@ -76,6 +82,28 @@ class ProductImageSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
+
+
+class ProductVariantSerializer(serializers.ModelSerializer):
+    vendor = serializers.PrimaryKeyRelatedField(source="product.vendor", read_only=True)
+    category = serializers.PrimaryKeyRelatedField(source="product.category", read_only=True)
+
+    class Meta:
+        model = ProductVariant
+        fields = [
+            "id",
+            "product",
+            "vendor",
+            "category",
+            "code",
+            "name",
+            "price_amount",
+            "sort_order",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at", "vendor", "category"]
 
 
 class OptionGroupSerializer(serializers.ModelSerializer):
@@ -143,6 +171,31 @@ class ProductAvailabilitySerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]
 
 
+class ProductVariantViewSet(viewsets.ModelViewSet):
+    queryset = ProductVariant.objects.all().order_by("sort_order", "id")
+    serializer_class = ProductVariantSerializer
+    permission_classes = [IsAdminOrReadOnly]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        qs = qs.filter(
+            is_active=True,
+            product__is_active=True,
+            product__is_available=True,
+            product__is_available_today=True,
+        )
+
+        product_id = self.request.query_params.get("product")
+        if product_id:
+            qs = qs.filter(product_id=product_id)
+
+        vendor_id = self.request.query_params.get("vendor")
+        if vendor_id:
+            qs = qs.filter(product__vendor_id=vendor_id)
+
+        return qs
+
+
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all().order_by("sort_order", "id")
     serializer_class = CategorySerializer
@@ -153,6 +206,32 @@ class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all().order_by("sort_order", "id")
     serializer_class = ProductSerializer
     permission_classes = [IsAdminOrReadOnly]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        qs = qs.filter(is_active=True, is_available=True, is_available_today=True)
+
+        vendor_id = self.request.query_params.get("vendor")
+        if vendor_id:
+            qs = qs.filter(vendor_id=vendor_id)
+
+        category_id = self.request.query_params.get("category")
+        if category_id:
+            qs = qs.filter(category_id=category_id)
+
+        available_today = self.request.query_params.get("is_available_today")
+        if available_today is not None:
+            qs = qs.filter(is_available_today=available_today.lower() == "true")
+
+        is_active_param = self.request.query_params.get("is_active")
+        if is_active_param is not None:
+            qs = qs.filter(is_active=is_active_param.lower() == "true")
+
+        is_available_param = self.request.query_params.get("is_available")
+        if is_available_param is not None:
+            qs = qs.filter(is_available=is_available_param.lower() == "true")
+
+        return qs
 
 
 class ProductImageViewSet(viewsets.ModelViewSet):
