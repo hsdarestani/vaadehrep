@@ -1,4 +1,5 @@
 import logging
+from urllib.parse import urlencode
 
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
@@ -305,11 +306,32 @@ def payment_callback(request):
     if not redirect_url:
         site_base = getattr(settings, "FRONTEND_BASE_URL", "") or getattr(settings, "SITE_BASE_URL", "")
         if site_base:
-            redirect_url = f"{site_base.rstrip('/')}/orders"
+            redirect_url = f"{site_base.rstrip('/')}/payment-result"
 
-    response_payload = {"status": "ok", "order_status": order.status}
+    response_payload = {
+        "status": "ok",
+        "order_status": order.status,
+        "payment_status": order.payment_status,
+        "order_id": str(order.id),
+        "order_code": getattr(order, "short_code", ""),
+        "track_id": verification.get("track_id"),
+        "ref_number": verification.get("ref_number"),
+        "result": verification.get("result"),
+        "message": verification.get("message"),
+    }
     if request.method == "GET" and redirect_url:
-        redirect_target = f"{redirect_url}?order_id={order.id}&payment_status={order.payment_status}"
+        query_params = {
+            "order_id": response_payload["order_id"],
+            "order_code": response_payload["order_code"],
+            "payment_status": response_payload["payment_status"],
+            "order_status": response_payload["order_status"],
+            "track_id": response_payload["track_id"],
+            "ref_number": response_payload["ref_number"],
+            "result": response_payload["result"],
+            "message": response_payload["message"],
+        }
+        query_string = urlencode({k: v for k, v in query_params.items() if v not in [None, ""]})
+        redirect_target = f"{redirect_url}?{query_string}" if query_string else redirect_url
         return redirect(redirect_target)
 
     return JsonResponse(response_payload)
