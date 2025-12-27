@@ -2,6 +2,7 @@ import { api } from "./client";
 import type { Address, Order, Product, Vendor } from "./types";
 
 export const endpoints = {
+  login: (phone: string, full_name?: string) => api.post("/accounts/login/", { phone, full_name }),
   vendors: () => api.get<Vendor[]>("/vendors/vendors/"),
   productsByVendor: (vendorId: number) => api.get<Product[]>("/catalog/products/", { params: { vendor: vendorId } }),
   addresses: () => api.get<Address[]>("/addresses/addresses/"),

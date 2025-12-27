@@ -31,10 +31,11 @@ export const useAuth = create<AuthState>((set) => ({
   verifyOtp: async (phone: string, _code: string) => {
     set({ loading: true });
     try {
-      // TODO: replace with real verify endpoint. For now, just store the phone as session placeholder.
-      localStorage.setItem("vaadeh_access", "demo-token");
-      localStorage.setItem("vaadeh_user_phone", phone);
-      set({ user: { id: phone, phone } });
+      const { data } = await endpoints.login(phone);
+      localStorage.setItem("vaadeh_access", data.access);
+      localStorage.setItem("vaadeh_refresh", data.refresh);
+      localStorage.setItem("vaadeh_user_phone", data.user.phone);
+      set({ user: { id: data.user.id, phone: data.user.phone } });
     } finally {
       set({ loading: false });
     }

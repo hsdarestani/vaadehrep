@@ -1,7 +1,9 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers, status, viewsets
-from rest_framework.permissions import IsAdminUser
+from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import LoginOTP, TelegramUser, UserDevice
 from integrations.services import sms
@@ -141,3 +143,33 @@ class UserDeviceViewSet(viewsets.ModelViewSet):
     queryset = UserDevice.objects.all().order_by("-created_at")
     serializer_class = UserDeviceSerializer
     permission_classes = [IsAdminUser]
+
+
+class PhoneLoginView(APIView):
+    permission_classes = [AllowAny]
+
+    class InputSerializer(serializers.Serializer):
+        phone = serializers.CharField(max_length=20)
+        full_name = serializers.CharField(max_length=120, required=False, allow_blank=True)
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.InputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        phone = serializer.validated_data["phone"].strip()
+        full_name = serializer.validated_data.get("full_name", "").strip()
+
+        user, _created = User.objects.get_or_create(phone=phone, defaults={"full_name": full_name})
+        if full_name and user.full_name != full_name:
+            user.full_name = full_name
+            user.save(update_fields=["full_name"])
+
+        refresh = RefreshToken.for_user(user)
+        user_data = UserSerializer(user).data
+
+        return Response(
+            {
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "user": user_data,
+            }
+        )
