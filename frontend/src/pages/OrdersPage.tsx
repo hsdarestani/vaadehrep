@@ -43,10 +43,40 @@ export function OrdersPage() {
               <Card
                 key={order.id}
                 title={`سفارش ${order.short_code}`}
-                description={`وضعیت: ${translateStatus(order.status)}`}
+                description={`وضعیت: ${translateStatus(order.status)} • پرداخت: ${translatePaymentStatus(order.payment_status || "UNPAID")}`}
                 footer={<span className="muted">{formatCurrency(order.total_amount)}</span>}
               >
-                <p className="muted">ثبت شده در: {new Date(order.placed_at).toLocaleString("fa-IR")}</p>
+                <p className="muted" style={{ marginBottom: 8 }}>
+                  ثبت شده در: {new Date(order.placed_at).toLocaleString("fa-IR")}
+                </p>
+                {order.items && order.items.length > 0 ? (
+                  <div>
+                    <p style={{ margin: "0 0 4px", fontWeight: 700 }}>جزئیات سفارش</p>
+                    <ul style={{ margin: 0, paddingInlineStart: 16 }}>
+                      {order.items.map((item) => (
+                        <li key={item.id} style={{ marginBottom: 4 }}>
+                          <span>{item.product_title_snapshot}</span>{" "}
+                          <span className="muted">
+                            ×{item.quantity} — {formatCurrency(item.line_subtotal ?? item.unit_price_snapshot * item.quantity)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {order.delivery ? (
+                  <p className="muted" style={{ marginTop: 8 }}>
+                    نوع ارسال: {translateDelivery(order.delivery.delivery_type || order.delivery_type)}{" "}
+                    {order.delivery.tracking_code ? `• کد پیگیری: ${order.delivery.tracking_code}` : ""}
+                  </p>
+                ) : null}
+                {order.payment_url && order.payment_status !== "PAID" ? (
+                  <div style={{ marginTop: 8 }}>
+                    <a className="secondary-button" href={order.payment_url}>
+                      پرداخت سفارش
+                    </a>
+                  </div>
+                ) : null}
               </Card>
             ))}
           </div>
@@ -63,6 +93,7 @@ function formatCurrency(amount?: number | null) {
 
 function translateStatus(status: string) {
   const map: Record<string, string> = {
+    PENDING_PAYMENT: "در انتظار پرداخت",
     PLACED: "ثبت شده",
     CONFIRMED: "تایید شده",
     PREPARING: "در حال آماده‌سازی",
@@ -73,4 +104,22 @@ function translateStatus(status: string) {
     FAILED: "ناموفق",
   };
   return map[status] ?? status;
+}
+
+function translatePaymentStatus(status: string) {
+  const map: Record<string, string> = {
+    UNPAID: "در انتظار پرداخت",
+    PAID: "پرداخت شده",
+    REFUNDED: "عودت داده شده",
+    FAILED: "ناموفق",
+  };
+  return map[status] ?? status;
+}
+
+function translateDelivery(deliveryType?: string) {
+  const map: Record<string, string> = {
+    IN_ZONE: "ارسال داخلی",
+    OUT_OF_ZONE_SNAPP: "ارسال با اسنپ",
+  };
+  return map[deliveryType || ""] ?? "ارسال";
 }

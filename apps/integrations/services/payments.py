@@ -10,9 +10,12 @@ logger = logging.getLogger(__name__)
 
 
 def _base_url() -> str:
-    if settings.PAYMENT_GATEWAY_BASE_URL:
-        return settings.PAYMENT_GATEWAY_BASE_URL.rstrip("/")
-    return "https://gateway.zibal.ir/v1"
+    base_url = settings.PAYMENT_GATEWAY_BASE_URL.rstrip("/") if settings.PAYMENT_GATEWAY_BASE_URL else ""
+    if not base_url:
+        base_url = "https://gateway.zibal.ir/v1"
+    if not base_url.endswith("/v1"):
+        base_url = f"{base_url}/v1"
+    return base_url
 
 
 def _merchant_id() -> str:

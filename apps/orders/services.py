@@ -10,6 +10,7 @@ from vendors.models import Vendor, VendorLocation
 
 # وضعیت‌هایی که سفارش را فعال نگه می‌دارند و جلوی ویرایش آدرس را می‌گیرند.
 ACTIVE_ORDER_STATUSES = {
+    "PENDING_PAYMENT",
     "DRAFT",
     "PLACED",
     "CONFIRMED",
@@ -20,6 +21,7 @@ ACTIVE_ORDER_STATUSES = {
 
 
 ORDER_STATUS_EVENTS = {
+    "PENDING_PAYMENT": "ORDER_PENDING_PAYMENT",
     "PLACED": "ORDER_CREATED",
     "CONFIRMED": "ORDER_CONFIRMED",
     "PREPARING": "ORDER_PREPARING",

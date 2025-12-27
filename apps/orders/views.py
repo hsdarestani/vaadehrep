@@ -29,12 +29,53 @@ def _normalize_phone(raw: str) -> str:
     return "".join(ch for ch in p if ch.isdigit())
 
 
+class OrderItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OrderItem
+        fields = [
+            "id",
+            "order",
+            "product",
+            "product_title_snapshot",
+            "unit_price_snapshot",
+            "quantity",
+            "modifiers",
+            "line_subtotal",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
+
+
+class OrderDeliverySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OrderDelivery
+        fields = [
+            "id",
+            "order",
+            "delivery_type",
+            "is_cash_on_delivery",
+            "courier_name",
+            "courier_phone",
+            "tracking_code",
+            "tracking_url",
+            "external_delivery_quote_amount",
+            "external_delivery_final_amount",
+            "external_provider",
+            "external_payload",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
+
+
 class OrderSerializer(serializers.ModelSerializer):
     short_code = serializers.CharField(read_only=True)
     delivery_type = serializers.CharField(source="delivery.delivery_type", read_only=True)
     delivery_is_cash_on_delivery = serializers.BooleanField(
         source="delivery.is_cash_on_delivery", read_only=True, default=None
     )
+    items = serializers.SerializerMethodField()
+    delivery = serializers.SerializerMethodField()
+    payment_url = serializers.SerializerMethodField()
 
     def validate_payment_method(self, value):
         if value != "ONLINE":
@@ -67,8 +108,26 @@ class OrderSerializer(serializers.ModelSerializer):
             "short_code",
             "delivery_type",
             "delivery_is_cash_on_delivery",
+            "items",
+            "delivery",
+            "payment_url",
         ]
-        read_only_fields = ["id", "placed_at", "user", "short_code"]
+        read_only_fields = ["id", "placed_at", "user", "short_code", "items", "delivery", "payment_url"]
+
+    def get_items(self, obj):
+        return OrderItemSerializer(obj.items.order_by("created_at"), many=True).data
+
+    def get_delivery(self, obj):
+        if hasattr(obj, "delivery"):
+            return OrderDeliverySerializer(obj.delivery).data
+        return None
+
+    def get_payment_url(self, obj):
+        meta = obj.meta or {}
+        payment_meta = meta.get("payment") if isinstance(meta, dict) else None
+        if isinstance(payment_meta, dict):
+            return payment_meta.get("payment_url") or payment_meta.get("paymentUrl") or payment_meta.get("url")
+        return None
 
 
 class OrderItemInputSerializer(serializers.Serializer):
@@ -179,6 +238,7 @@ class OrderCreateSerializer(OrderSerializer):
         accept_terms = validated_data.pop("accept_terms", False)
         delivery_address_data = validated_data.pop("delivery_address_data", None)
         delivery_type = validated_data.pop("delivery_type", None)
+        validated_data["status"] = "PENDING_PAYMENT"
 
         request = self.context.get("request")
         request_user = getattr(request, "user", None)
@@ -221,6 +281,7 @@ class OrderCreateSerializer(OrderSerializer):
             validated_data["delivery_address"] = delivery_address
 
         validated_data["payment_method"] = "ONLINE"
+        validated_data["payment_status"] = "UNPAID"
 
         order = Order.objects.create(**validated_data)
 
@@ -263,44 +324,6 @@ class OrderCreateSerializer(OrderSerializer):
         )
 
         return order
-
-
-class OrderItemSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = OrderItem
-        fields = [
-            "id",
-            "order",
-            "product",
-            "product_title_snapshot",
-            "unit_price_snapshot",
-            "quantity",
-            "modifiers",
-            "line_subtotal",
-            "created_at",
-        ]
-        read_only_fields = ["id", "created_at"]
-
-
-class OrderDeliverySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = OrderDelivery
-        fields = [
-            "id",
-            "order",
-            "delivery_type",
-            "is_cash_on_delivery",
-            "courier_name",
-            "courier_phone",
-            "tracking_code",
-            "tracking_url",
-            "external_delivery_quote_amount",
-            "external_delivery_final_amount",
-            "external_provider",
-            "external_payload",
-            "created_at",
-        ]
-        read_only_fields = ["id", "created_at"]
 
 
 class OrderStatusHistorySerializer(serializers.ModelSerializer):
@@ -357,7 +380,7 @@ class ProductSummarySerializer(serializers.ModelSerializer):
 
 
 class OrderViewSet(viewsets.ModelViewSet):
-    queryset = Order.objects.all().order_by("-placed_at")
+    queryset = Order.objects.select_related("delivery").prefetch_related("items").order_by("-placed_at")
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
 
