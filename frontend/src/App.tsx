@@ -8,6 +8,7 @@ import { CheckoutPage } from "./pages/CheckoutPage";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { MenuPage } from "./pages/MenuPage";
+import { PaymentResultPage } from "./pages/PaymentResultPage";
 import { OrdersPage } from "./pages/OrdersPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { VendorPage } from "./pages/VendorPage";
@@ -32,6 +33,7 @@ function App() {
         <Route path="/addresses" element={<AddressesPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/vendor" element={<VendorPage />} />
+        <Route path="/payment-result" element={<PaymentResultPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppLayout>
