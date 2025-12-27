@@ -67,6 +67,7 @@ class TelegramUser(models.Model):
 
     # برای کنترل امنیت/ریسک:
     is_blocked = models.BooleanField(default=False)
+    state = models.JSONField(null=True, blank=True, default=dict)
     created_at = models.DateTimeField(default=timezone.now)
     last_seen_at = models.DateTimeField(null=True, blank=True)
 
@@ -132,4 +133,3 @@ class UserDevice(models.Model):
 
     def __str__(self):
         return f"{self.user_id}:{self.device_id} active={self.is_active}"
-
