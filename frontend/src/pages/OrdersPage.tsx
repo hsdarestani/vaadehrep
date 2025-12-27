@@ -1,17 +1,43 @@
 import { Navigate, useLocation } from "react-router-dom";
+import { useState } from "react";
 
 import { useAuth } from "../state/auth";
 import { useOrders } from "../hooks/useOrders";
 import { Card } from "../components/common/Card";
+import { endpoints } from "../api/endpoints";
 
 export function OrdersPage() {
   const { user, activeOrder } = useAuth();
   const { orders, isLoading } = useOrders(!!user);
   const location = useLocation();
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<{ orderId: string; message: string } | null>(null);
 
   if (!user && !activeOrder) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
+
+  const handlePay = async (orderId: string, fallbackUrl?: string | null) => {
+    setPaymentError(null);
+    if (fallbackUrl) {
+      window.location.href = fallbackUrl;
+      return;
+    }
+    setPayingId(orderId);
+    try {
+      const res = await endpoints.payForOrder(orderId);
+      const nextUrl = (res.data as { payment_url?: string | null }).payment_url ?? null;
+      if (nextUrl) {
+        window.location.href = nextUrl;
+        return;
+      }
+      setPaymentError({ orderId, message: "لینک پرداخت پیدا نشد. لطفاً دوباره تلاش کنید." });
+    } catch {
+      setPaymentError({ orderId, message: "خطا در ایجاد لینک پرداخت. لطفاً دوباره تلاش کنید." });
+    } finally {
+      setPayingId(null);
+    }
+  };
 
   return (
     <section className="section">
@@ -70,11 +96,21 @@ export function OrdersPage() {
                     {order.delivery.tracking_code ? `• کد پیگیری: ${order.delivery.tracking_code}` : ""}
                   </p>
                 ) : null}
-                {order.payment_url && order.payment_status !== "PAID" ? (
+                {order.status === "PENDING_PAYMENT" && order.payment_status !== "PAID" ? (
                   <div style={{ marginTop: 8 }}>
-                    <a className="secondary-button" href={order.payment_url}>
-                      پرداخت سفارش
-                    </a>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => handlePay(order.id, order.payment_url)}
+                      disabled={payingId === order.id}
+                    >
+                      {payingId === order.id ? "در حال اتصال به درگاه…" : "پرداخت سفارش"}
+                    </button>
+                    {paymentError?.orderId === order.id ? (
+                      <p className="muted" style={{ margin: "4px 0 0", color: "var(--color-danger, #d14343)" }}>
+                        {paymentError.message}
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
               </Card>

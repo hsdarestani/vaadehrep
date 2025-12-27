@@ -19,6 +19,7 @@ export const endpoints = {
   orders: () => api.get<Order[]>("/orders/orders/"),
   createOrder: (payload: Record<string, unknown>) =>
     api.post<Order & { payment_url?: string | null }>("/orders/orders/", payload),
+  payForOrder: (id: string) => api.post<{ payment_url?: string | null }>(`/orders/orders/${id}/pay/`),
   serviceability: (payload: Record<string, unknown>) =>
     api.post<ServiceabilityResponse>("/orders/serviceability/", payload),
   session: () => api.get<SessionResponse>("/accounts/session/"),
