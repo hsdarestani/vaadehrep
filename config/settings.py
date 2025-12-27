@@ -1,3 +1,4 @@
+
 """
 Django settings for config project.
 
@@ -179,14 +180,9 @@ PAYMENT_CALLBACK_SECRET = os.getenv("PAYMENT_CALLBACK_SECRET", "ascuinfbvw7vh-08
 PAYMENT_API_KEY = os.getenv("PAYMENT_API_KEY", "")
 
 
-# Deployment URLs
-SITE_BASE_URL = os.getenv("SITE_BASE_URL", "")
-FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "")
-TELEGRAM_WEBHOOK_URL = os.getenv("TELEGRAM_WEBHOOK_URL", "")
-
 
 # Deployment URLs
-SITE_BASE_URL = os.getenv("SITE_BASE_URL", "")
+SITE_BASE_URL = os.getenv("SITE_BASE_URL", "https://vaadeh.com/")
 FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "")
 TELEGRAM_WEBHOOK_URL = os.getenv("TELEGRAM_WEBHOOK_URL", "")
 
