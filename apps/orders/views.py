@@ -136,6 +136,97 @@ class OrderCreateSerializer(OrderSerializer):
         return order
 
 
+class OrderItemInputSerializer(serializers.Serializer):
+    product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.filter(is_active=True))
+    quantity = serializers.IntegerField(min_value=1)
+    modifiers = serializers.JSONField(required=False)
+
+
+class CustomerLocationSerializer(serializers.Serializer):
+    latitude = serializers.FloatField()
+    longitude = serializers.FloatField()
+    accuracy = serializers.FloatField(required=False)
+
+
+class OrderCreateSerializer(OrderSerializer):
+    vendor = serializers.PrimaryKeyRelatedField(queryset=Vendor.objects.all(), required=False)
+    items = OrderItemInputSerializer(many=True)
+    customer_location = CustomerLocationSerializer(required=False)
+
+    class Meta(OrderSerializer.Meta):
+        fields = OrderSerializer.Meta.fields + ["items", "customer_location"]
+        read_only_fields = OrderSerializer.Meta.read_only_fields
+
+    def validate_items(self, items):
+        if not items:
+            raise serializers.ValidationError("حداقل یک آیتم برای ثبت سفارش لازم است.")
+        return items
+
+    def validate_delivery_address(self, address):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user and user.is_authenticated and not user.is_staff and address.user_id != user.id:
+            raise serializers.ValidationError("آدرس انتخاب‌شده متعلق به شما نیست.")
+        return address
+
+    def validate(self, attrs):
+        items = attrs.get("items", [])
+        if not items:
+            return attrs
+
+        item_vendors = {item["product"].vendor for item in items}
+        input_vendor = attrs.get("vendor")
+
+        if input_vendor:
+            item_vendors.add(input_vendor)
+
+        if len(item_vendors) > 1:
+            raise serializers.ValidationError("تمام اقلام سفارش باید از یک فروشنده باشند.")
+
+        attrs["vendor"] = input_vendor or items[0]["product"].vendor
+        return attrs
+
+    def create(self, validated_data):
+        items = validated_data.pop("items", [])
+        customer_location = validated_data.pop("customer_location", None)
+
+        validated_data["payment_method"] = "ONLINE"
+
+        order = Order.objects.create(**validated_data)
+
+        subtotal = 0
+        for item in items:
+            product = item["product"]
+            quantity = item.get("quantity") or 1
+            unit_price = product.base_price
+            line_subtotal = unit_price * quantity
+            subtotal += line_subtotal
+
+            OrderItem.objects.create(
+                order=order,
+                product=product,
+                product_title_snapshot=product.name_fa,
+                unit_price_snapshot=unit_price,
+                quantity=quantity,
+                modifiers=item.get("modifiers"),
+                line_subtotal=line_subtotal,
+            )
+
+        order.subtotal_amount = subtotal
+        discount_amount = order.discount_amount or 0
+        delivery_fee = order.delivery_fee_amount or 0
+        service_fee = order.service_fee_amount or 0
+        order.total_amount = subtotal - discount_amount + delivery_fee + service_fee
+
+        meta = order.meta or {}
+        if customer_location:
+            meta = {**meta, "customer_location": customer_location}
+        order.meta = meta or None
+        order.save(update_fields=["subtotal_amount", "total_amount", "meta"])
+
+        return order
+
+
 class OrderItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderItem
