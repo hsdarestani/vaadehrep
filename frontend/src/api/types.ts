@@ -50,3 +50,10 @@ export type UserProfile = {
   id: number | string;
   phone: string;
 };
+
+export type VerifyLoginResponse = {
+  ok: boolean;
+  access: string;
+  refresh: string;
+  user: UserProfile;
+};
