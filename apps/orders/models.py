@@ -93,6 +93,15 @@ class Order(models.Model):
     def __str__(self):
         return f"{self.id} {self.status}"
 
+    @property
+    def short_code(self) -> str:
+        """
+        کد کوتاه برای مشتری.
+        از بخشی از UUID تولید می‌شود و فقط شامل عدد است تا استفاده در پیامک/تلفن راحت باشد.
+        """
+        numeric = int(self.id.hex[:12], 16)
+        return str(numeric % 10_000_000_000).zfill(10)
+
 
 class OrderItem(models.Model):
     """
@@ -212,4 +221,3 @@ class OrderStatusHistory(models.Model):
 
     def __str__(self):
         return f"{self.order_id}: {self.from_status}->{self.to_status}"
-

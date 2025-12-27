@@ -193,7 +193,13 @@ def payment_callback(request):
     try:
         order = Order.objects.get(id=order_id)
     except Order.DoesNotExist:
-        return JsonResponse({"status": "order_not_found"}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            order = Order.objects.get(meta__payment__order_id=str(order_id))
+        except Order.DoesNotExist:
+            try:
+                order = Order.objects.get(id__startswith=str(order_id))
+            except Order.DoesNotExist:
+                return JsonResponse({"status": "order_not_found"}, status=status.HTTP_404_NOT_FOUND)
 
     previous_status = order.status
     if payment_status == "PAID":
