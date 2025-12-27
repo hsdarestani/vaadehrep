@@ -602,13 +602,11 @@ def _handle_menu_callback(chat_id, data: str):
             return HttpResponse(status=status.HTTP_200_OK)
 
         summary = f"سفارش شما ثبت شد. کد: {order.short_code}\nمبلغ: {order.total_amount:,}"
+        reply_markup = None
         if payment_url:
-            summary += f"\nلینک پرداخت: {payment_url}"
-        telegram.send_message(
-            chat_id=str(chat_id),
-            text=summary,
-            reply_markup=telegram.build_order_action_keyboard(order),
-        )
+            summary += f"\nبرای تکمیل سفارش پرداخت کنید."
+            reply_markup = {"inline_keyboard": [[{"text": "پرداخت سفارش 💳", "url": payment_url}]]}
+        telegram.send_message(chat_id=str(chat_id), text=summary, reply_markup=reply_markup)
         tg_user.state = {"cart": []}
         tg_user.save(update_fields=["state"])
         return HttpResponse(status=status.HTTP_200_OK)
@@ -712,25 +710,31 @@ def payment_callback(request):
     order_id = verification.get("order_id")
     payment_status = verification.get("status")
     from orders.models import Order  # local import to avoid circular
-    try:
-        order = Order.objects.get(id=order_id)
-    except Order.DoesNotExist:
-        try:
-            order = Order.objects.get(meta__payment__order_id=str(order_id))
-        except Order.DoesNotExist:
-            try:
-                order = Order.objects.get(id__startswith=str(order_id))
-            except Order.DoesNotExist:
-                return JsonResponse({"status": "order_not_found"}, status=status.HTTP_404_NOT_FOUND)
+    order = None
+    if order_id:
+        order = Order.objects.filter(meta__payment__order_id=str(order_id)).first()
+        if not order:
+            order = Order.objects.filter(id=str(order_id)).first()
+        if not order:
+            # Fall back to comparing short codes derived from the UUID
+            order = next((o for o in Order.objects.all() if getattr(o, "short_code", "") == str(order_id)), None)
+    if not order:
+        return JsonResponse({"status": "order_not_found"}, status=status.HTTP_404_NOT_FOUND)
 
     previous_status = order.status
+    previous_payment_status = order.payment_status
     if payment_status == "PAID":
         order.payment_status = "PAID"
-        order.status = "CONFIRMED"
+        if order.status in {"PENDING_PAYMENT", "FAILED"}:
+            order.status = "CONFIRMED"
     else:
-        order.payment_status = "FAILED"
-        order.status = "FAILED"
-    order.save(update_fields=["payment_status", "status"])
+        # Only downgrade if payment was not previously captured
+        if order.payment_status != "PAID":
+            order.payment_status = "FAILED"
+            if order.status == "PENDING_PAYMENT":
+                order.status = "FAILED"
+    if order.payment_status != previous_payment_status or order.status != previous_status:
+        order.save(update_fields=["payment_status", "status"])
 
     if previous_status != order.status:
         from orders.models import OrderStatusHistory

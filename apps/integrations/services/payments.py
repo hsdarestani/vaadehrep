@@ -86,7 +86,14 @@ def verify_payment(request: HttpRequest) -> Optional[Dict[str, Any]]:
     payload = payload or getattr(request, "POST", {})
     payload = payload or getattr(request, "GET", {})
     payload = dict(payload)
-    track_id = payload.get("trackId") or payload.get("track_id")
+
+    def _extract_value(data: dict, key: str) -> Optional[str]:
+        value = data.get(key)
+        if isinstance(value, (list, tuple)):
+            value = value[0] if value else None
+        return str(value) if value is not None else None
+
+    track_id = _extract_value(payload, "trackId") or _extract_value(payload, "track_id")
     if not track_id:
         return None
 
@@ -100,7 +107,7 @@ def verify_payment(request: HttpRequest) -> Optional[Dict[str, Any]]:
         response.raise_for_status()
         data = response.json()
         payment_success = data.get("result") in {100, 101}
-        order_id = data.get("orderId")
+        order_id = _extract_value(data, "orderId") or _extract_value(data, "order_id")
         return {
             "order_id": order_id,
             "status": "PAID" if payment_success else "FAILED",
