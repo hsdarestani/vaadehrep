@@ -14,7 +14,6 @@ export function CheckoutPage() {
   const isAuthed = !!user;
   const { addresses, isLoading: isLoadingAddresses, createAddress } = useAddressBook(isAuthed);
   const [addressId, setAddressId] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"ONLINE" | "COD">("ONLINE");
   const [newTitle, setNewTitle] = useState("");
   const [newFullText, setNewFullText] = useState("");
   const { coords, status, requestLocation } = useGeolocation(isAuthed);
@@ -38,14 +37,19 @@ export function CheckoutPage() {
       navigate("/login", { replace: true, state: { from: "/checkout" } });
       return;
     }
-    await submitOrder({ addressId, paymentMethod });
+    await submitOrder({ addressId });
     navigate("/orders");
   };
 
   const handleQuickSaveAddress = async (event?: FormEvent | MouseEvent<HTMLButtonElement>) => {
     event?.preventDefault();
     if (!newTitle || !newFullText) return;
-    const saved = await createAddress({ title: newTitle, full_text: newFullText });
+    const saved = await createAddress({
+      title: newTitle,
+      full_text: newFullText,
+      latitude: coords?.latitude,
+      longitude: coords?.longitude,
+    });
     if (saved?.id) {
       setAddressId(String(saved.id));
       setNewTitle("");
@@ -149,26 +153,6 @@ export function CheckoutPage() {
                   </button>
                 </div>
               </details>
-
-              <div className="input-label">
-                <span style={{ display: "block", marginBottom: 6 }}>روش پرداخت</span>
-                <div className="pill-switch">
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod("ONLINE")}
-                    className={`pill-option ${paymentMethod === "ONLINE" ? "active" : ""}`}
-                  >
-                    پرداخت آنلاین
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod("COD")}
-                    className={`pill-option ${paymentMethod === "COD" ? "active" : ""}`}
-                  >
-                    پرداخت در محل
-                  </button>
-                </div>
-              </div>
 
               <div className="api-summary">
                 <div>

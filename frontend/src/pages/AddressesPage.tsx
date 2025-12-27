@@ -1,7 +1,8 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 
 import { useAddressBook } from "../hooks/useAddressBook";
+import { useGeolocation } from "../hooks/useGeolocation";
 import { useAuth } from "../state/auth";
 import { Card } from "../components/common/Card";
 
@@ -11,10 +12,16 @@ export function AddressesPage() {
   const { addresses, createAddress, isLoading } = useAddressBook(!!user);
   const [title, setTitle] = useState("");
   const [fullText, setFullText] = useState("");
+  const { coords, status, requestLocation } = useGeolocation(!!user);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    const saved = await createAddress({ title, full_text: fullText });
+    const saved = await createAddress({
+      title,
+      full_text: fullText,
+      latitude: coords?.latitude,
+      longitude: coords?.longitude,
+    });
     if (saved && saved.id) {
       setTitle("");
       setFullText("");
@@ -25,6 +32,17 @@ export function AddressesPage() {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
+  const locationStatusText = useMemo(() => {
+    if (status === "granted" && coords) {
+      return `موقعیت دریافت شد (دقت ${coords.accuracy ? Math.round(coords.accuracy) : "?"} متر)`;
+    }
+    if (status === "prompting") return "در حال دریافت موقعیت...";
+    if (status === "denied") return "اجازه دسترسی به موقعیت داده نشد.";
+    if (status === "unsupported") return "مرورگر از موقعیت مکانی پشتیبانی نمی‌کند.";
+    if (status === "error") return "دریافت موقعیت با خطا روبه‌رو شد.";
+    return "برای ثبت دقیق‌تر آدرس، لطفا موقعیت خود را فعال کنید.";
+  }, [coords, status]);
+
   return (
     <section className="section">
       <div className="container small">
@@ -34,6 +52,18 @@ export function AddressesPage() {
             آدرس‌های من
           </h1>
           <p className="section-subtitle">بعد از ورود، آدرس‌های ذخیره‌شده‌ات اینجا نمایش داده می‌شوند.</p>
+        </div>
+
+        <div className="location-banner">
+          <div>
+            <p className="muted" style={{ margin: 0, fontWeight: 700 }}>
+              موقعیت شما
+            </p>
+            <strong>{locationStatusText}</strong>
+          </div>
+          <button className="secondary-button" type="button" onClick={requestLocation}>
+            دریافت موقعیت
+          </button>
         </div>
 
         <form onSubmit={handleSubmit} className="stacked-form">

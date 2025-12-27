@@ -44,13 +44,13 @@ export const useCart = create<CartState>((set) => ({
 type CheckoutState = {
   loading: boolean;
   total: number;
-  submitOrder: (payload: { addressId: string; paymentMethod: "ONLINE" | "COD" }) => Promise<void>;
+  submitOrder: (payload: { addressId: string }) => Promise<void>;
 };
 
 export const useCheckout = create<CheckoutState>((set, get) => ({
   loading: false,
   total: 0,
-  submitOrder: async ({ addressId, paymentMethod }) => {
+  submitOrder: async ({ addressId }) => {
     set({ loading: true });
     const items = getCartItems();
     const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -58,7 +58,7 @@ export const useCheckout = create<CheckoutState>((set, get) => ({
     try {
       await endpoints.createOrder({
         delivery_address: addressId,
-        payment_method: paymentMethod,
+        payment_method: "ONLINE",
         items: items.map((item) => ({
           product: item.productId,
           quantity: item.quantity,
