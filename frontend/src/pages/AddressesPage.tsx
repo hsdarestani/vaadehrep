@@ -3,21 +3,29 @@ import { Navigate, useLocation } from "react-router-dom";
 
 import { useAddressBook } from "../hooks/useAddressBook";
 import { LocationPicker } from "../components/LocationPicker";
+import { AddressPinsMap } from "../components/AddressPinsMap";
 import { useGeolocation } from "../hooks/useGeolocation";
 import { useAuth } from "../state/auth";
 import { useLocationStore } from "../state/location";
 import { Card } from "../components/common/Card";
+import type { Address } from "../api/types";
 
 export function AddressesPage() {
   const { user, activeOrder } = useAuth();
   const location = useLocation();
-  const { addresses, createAddress, isLoading, removeAddress } = useAddressBook(!!user);
+  const { addresses, createAddress, isLoading, removeAddress, updateAddress } = useAddressBook(!!user);
   const [title, setTitle] = useState("");
   const [fullText, setFullText] = useState("");
   const { coords, status, requestLocation } = useGeolocation(!!user);
   const setCoords = useLocationStore((state) => state.setCoords);
   const [showMap, setShowMap] = useState(false);
   const canModify = !!user && !activeOrder;
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const [editingFullText, setEditingFullText] = useState("");
+  const [editingCoords, setEditingCoords] = useState<{ latitude: number; longitude: number } | undefined>();
+  const [editingError, setEditingError] = useState("");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -47,6 +55,46 @@ export function AddressesPage() {
     if (status === "error") return "دریافت موقعیت با خطا روبه‌رو شد.";
     return "برای ثبت دقیق‌تر آدرس، لطفا موقعیت خود را فعال کنید.";
   }, [coords, status]);
+
+  const startEdit = (address: Address) => {
+    setEditingId(address.id);
+    setEditingTitle(address.title || "");
+    setEditingFullText(address.full_text || "");
+    if (address.latitude != null && address.longitude != null) {
+      setEditingCoords({ latitude: Number(address.latitude), longitude: Number(address.longitude) });
+    } else {
+      setEditingCoords(undefined);
+    }
+    setEditingError("");
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditingTitle("");
+    setEditingFullText("");
+    setEditingCoords(undefined);
+    setEditingError("");
+  };
+
+  const handleUpdate = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!editingId) return;
+    setIsSavingEdit(true);
+    setEditingError("");
+    try {
+      await updateAddress(editingId, {
+        title: editingTitle,
+        full_text: editingFullText,
+        latitude: editingCoords?.latitude,
+        longitude: editingCoords?.longitude,
+      });
+      cancelEdit();
+    } catch (err) {
+      setEditingError("خطا در ذخیره تغییرات آدرس. لطفاً دوباره تلاش کنید.");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
 
   return (
     <section className="section">
@@ -127,6 +175,16 @@ export function AddressesPage() {
           ) : null}
         </form>
 
+        {!!addresses?.length ? (
+          <div className="stacked-form" style={{ marginTop: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <h3 style={{ margin: 0 }}>نمایش روی نقشه</h3>
+              {editingId ? <span className="pill small">در حال ویرایش آدرس {editingId}</span> : null}
+            </div>
+            <AddressPinsMap addresses={addresses} highlightId={editingId ?? undefined} />
+          </div>
+        ) : null}
+
         {isLoading ? (
           <p className="muted" style={{ textAlign: "center" }}>
             در حال بارگذاری…
@@ -143,20 +201,95 @@ export function AddressesPage() {
                     <p className="muted" style={{ margin: 0 }}>
                       شهر: {address.city || "—"}
                     </p>
+                    {address.latitude != null && address.longitude != null ? (
+                      <p className="muted" style={{ margin: 0 }}>
+                        مختصات: {Number(address.latitude).toFixed(6)}, {Number(address.longitude).toFixed(6)}
+                      </p>
+                    ) : null}
                   </>
                 }
                 footer={
-                  <button
-                    className="ghost-button"
-                    type="button"
-                    onClick={() => removeAddress(address.id)}
-                    disabled={!canModify}
-                  >
-                    حذف
-                  </button>
+                  editingId === address.id ? (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        className="secondary-button"
+                        type="submit"
+                        form={`edit-address-form-${address.id}`}
+                        disabled={!canModify || isSavingEdit}
+                      >
+                        ذخیره تغییرات
+                      </button>
+                      <button className="ghost-button" type="button" onClick={cancelEdit}>
+                        انصراف
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => startEdit(address)}
+                        disabled={!canModify}
+                      >
+                        ویرایش
+                      </button>
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        onClick={() => removeAddress(address.id)}
+                        disabled={!canModify}
+                      >
+                        حذف
+                      </button>
+                    </div>
+                  )
                 }
               >
-                <p className="muted">شهر: {address.city || "—"}</p>
+                {editingId === address.id ? (
+                  <form id={`edit-address-form-${address.id}`} onSubmit={handleUpdate} className="stacked-form">
+                    <label>
+                      <span className="muted">عنوان</span>
+                      <input
+                        value={editingTitle}
+                        onChange={(e) => setEditingTitle(e.target.value)}
+                        required
+                        className="input-field"
+                        disabled={!canModify}
+                      />
+                    </label>
+                    <label>
+                      <span className="muted">آدرس کامل</span>
+                      <textarea
+                        value={editingFullText}
+                        onChange={(e) => setEditingFullText(e.target.value)}
+                        required
+                        rows={3}
+                        className="input-field"
+                        disabled={!canModify}
+                      />
+                    </label>
+                    <div className="stacked-form">
+                      <span className="muted">انتخاب موقعیت روی نقشه</span>
+                      <LocationPicker value={editingCoords} onChange={(nextCoords) => setEditingCoords(nextCoords)} />
+                      {editingCoords ? (
+                        <p className="muted" style={{ margin: 0 }}>
+                          مختصات جدید: {editingCoords.latitude.toFixed(6)}, {editingCoords.longitude.toFixed(6)}
+                        </p>
+                      ) : (
+                        <p className="muted" style={{ margin: 0 }}>
+                          برای ثبت موقعیت، روی نقشه کلیک کنید.
+                        </p>
+                      )}
+                    </div>
+                    {editingError ? (
+                      <p className="muted" style={{ margin: 0, color: "#b91c1c", fontWeight: 700 }}>
+                        {editingError}
+                      </p>
+                    ) : null}
+                  </form>
+                ) : (
+                  <p className="muted">شهر: {address.city || "—"}</p>
+                )}
               </Card>
             ))}
           </div>
