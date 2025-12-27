@@ -10,6 +10,8 @@ from rest_framework.decorators import api_view
 from rest_framework.permissions import IsAdminUser
 
 from accounts.models import TelegramUser, User
+from addresses.models import Address
+from catalog.models import Product
 from integrations.models import (
     ExternalRequestLog,
     IntegrationEndpoint,
@@ -18,6 +20,10 @@ from integrations.models import (
     VendorIntegrationConfig,
 )
 from integrations.services import payments, telegram
+from orders.models import Order
+from orders.services import evaluate_vendor_serviceability, pick_nearest_available_vendor
+from orders.views import OrderCreateSerializer
+from vendors.models import Vendor
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +33,15 @@ def _normalize_phone(raw: str) -> str:
         return ""
     p = str(raw).strip()
     return "".join(ch for ch in p if ch.isdigit())
+
+
+def _get_or_create_user_by_phone(phone: str) -> User:
+    phone_normalized = _normalize_phone(phone)
+    user, created = User.objects.get_or_create(phone=phone_normalized, defaults={"is_active": True})
+    if created:
+        user.set_unusable_password()
+        user.save(update_fields=["password"])
+    return user
 
 
 class IntegrationProviderSerializer(serializers.ModelSerializer):
@@ -161,6 +176,7 @@ def telegram_webhook(request, secret: str):
     chat_id = chat.get("id")
     text = message.get("text", "")
     contact = message.get("contact") or {}
+    location = message.get("location") or {}
 
     if not chat_id:
         return HttpResponse(status=status.HTTP_200_OK)
@@ -168,16 +184,17 @@ def telegram_webhook(request, secret: str):
     if text.startswith("/start"):
         telegram.send_message(
             chat_id=str(chat_id),
-            text="سلام! لطفا شماره موبایل خود را وارد کنید یا دکمه اشتراک‌گذاری شماره را بزنید.",
-            reply_markup={"keyboard": [[{"text": "ارسال شماره", "request_contact": True}]], "resize_keyboard": True},
+            text="برای ادامه، لطفا شماره موبایل خود را با دکمه زیر ارسال کنید.",
+            reply_markup={"keyboard": [[{"text": "اشتراک‌گذاری شماره 📱", "request_contact": True}]], "resize_keyboard": True},
         )
         return HttpResponse(status=status.HTTP_200_OK)
 
     phone = _normalize_phone(contact.get("phone_number") if contact else text.strip())
-    user = User.objects.filter(phone=phone).first()
-    if not user:
-        telegram.send_message(chat_id=str(chat_id), text="کاربری با این شماره پیدا نشد.")
+    if not phone:
+        telegram.send_message(chat_id=str(chat_id), text="برای شروع لازم است شماره موبایل خود را ارسال کنید.")
         return HttpResponse(status=status.HTTP_200_OK)
+
+    user = _get_or_create_user_by_phone(phone)
 
     TelegramUser.objects.update_or_create(
         telegram_user_id=chat_id,
@@ -194,7 +211,11 @@ def telegram_webhook(request, secret: str):
         "keyboard": [[{"text": "منو"}], [{"text": "سفارش‌های من"}]],
         "resize_keyboard": True,
     }
-    telegram.send_message(chat_id=str(chat_id), text="حساب شما لینک شد.", reply_markup=reply_markup)
+    telegram.send_message(
+        chat_id=str(chat_id),
+        text="حساب شما لینک شد. از منو گزینه مورد نظر را انتخاب کنید.",
+        reply_markup=reply_markup,
+    )
     return HttpResponse(status=status.HTTP_200_OK)
 
 
@@ -203,9 +224,20 @@ def _handle_telegram_callback(callback_query: dict):
     message = callback_query.get("message") or {}
     chat = message.get("chat") or {}
     chat_id = chat.get("id")
-    if not chat_id or not data.startswith("order:"):
+    if not chat_id:
         return HttpResponse(status=status.HTTP_200_OK)
 
+    if data.startswith("order:"):
+        return _handle_order_status_callback(chat_id, data)
+
+    if data.startswith("menu:" ) or data.startswith("address:") or data.startswith("product:") or data.startswith("cart:"):
+        return _handle_menu_callback(chat_id, data)
+
+    telegram.send_message(chat_id=str(chat_id), text="دستور ناشناخته است.")
+    return HttpResponse(status=status.HTTP_200_OK)
+
+
+def _handle_order_status_callback(chat_id, data: str):
     parts = data.split(":")
     if len(parts) != 3:
         return HttpResponse(status=status.HTTP_200_OK)
@@ -257,6 +289,241 @@ def _handle_telegram_callback(callback_query: dict):
         text=f"وضعیت سفارش به {telegram.status_label(order.status)} تغییر کرد.",
         reply_markup=telegram.build_order_action_keyboard(order),
     )
+    return HttpResponse(status=status.HTTP_200_OK)
+
+
+def _handle_menu_callback(chat_id, data: str):
+    tg_user = TelegramUser.objects.filter(telegram_user_id=chat_id).select_related("user").first()
+    if not tg_user:
+        telegram.send_message(chat_id=str(chat_id), text="برای استفاده ابتدا شماره موبایل خود را ارسال کنید.")
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    user = tg_user.user
+
+    if data == "menu:order":
+        addresses = Address.objects.filter(user=user, is_active=True)
+        if not addresses.exists():
+            telegram.send_message(
+                chat_id=str(chat_id),
+                text="ابتدا موقعیت یا آدرس خود را ارسال کنید.",
+                reply_markup={"keyboard": [[{"text": "اشتراک‌گذاری شماره 📱", "request_contact": True}]], "resize_keyboard": True},
+            )
+            return HttpResponse(status=status.HTTP_200_OK)
+        telegram.send_message(
+            chat_id=str(chat_id),
+            text="آدرس تحویل را انتخاب کنید یا موقعیت زنده بفرستید.",
+            reply_markup=telegram.build_address_keyboard(addresses),
+        )
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    if data == "menu:addresses":
+        addresses = Address.objects.filter(user=user, is_active=True)
+        if not addresses.exists():
+            telegram.send_message(
+                chat_id=str(chat_id),
+                text="هیچ آدرسی ثبت نشده است. از وب یا ارسال موقعیت برای ثبت استفاده کنید.",
+                reply_markup={"inline_keyboard": [[{"text": "ثبت آدرس جدید", "callback_data": "menu:order"}]]},
+            )
+            return HttpResponse(status=status.HTTP_200_OK)
+        telegram.send_message(
+            chat_id=str(chat_id),
+            text="آدرس‌های شما:",
+            reply_markup=telegram.build_address_keyboard(addresses),
+        )
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    if data == "menu:reorder":
+        last_order = (
+            Order.objects.filter(user=user, status__in=["DELIVERED", "CANCELLED", "FAILED"])
+            .order_by("-placed_at")
+            .prefetch_related("items__product")
+            .first()
+        )
+        if not last_order:
+            telegram.send_message(chat_id=str(chat_id), text="سفارشی برای تکرار یافت نشد.")
+            return HttpResponse(status=status.HTTP_200_OK)
+        tg_user.state = {
+            "cart": [
+                {
+                    "product_id": str(item.product_id),
+                    "quantity": item.quantity,
+                }
+                for item in last_order.items.all()
+            ]
+        }
+        tg_user.save(update_fields=["state"])
+        telegram.send_message(
+            chat_id=str(chat_id),
+            text="سبد خرید از آخرین سفارش بازسازی شد. برای ادامه آدرس را انتخاب کنید.",
+            reply_markup=telegram.build_main_menu_keyboard(has_addresses=True, has_active_order=False),
+        )
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    if data == "menu:track":
+        active_order = (
+            Order.objects.filter(user=user, status__in=ACTIVE_ORDER_STATUSES)
+            .order_by("-placed_at")
+            .first()
+        )
+        if not active_order:
+            telegram.send_message(chat_id=str(chat_id), text="سفارش فعالی وجود ندارد.")
+            return HttpResponse(status=status.HTTP_200_OK)
+        telegram.send_message(
+            chat_id=str(chat_id),
+            text=f"وضعیت سفارش {active_order.short_code}: {telegram.status_label(active_order.status)}",
+            reply_markup=telegram.build_order_action_keyboard(active_order),
+        )
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    if data.startswith("address:"):
+        address_id = data.split(":")[1]
+        address = Address.objects.filter(id=address_id, user=user, is_active=True).first()
+        if not address:
+            telegram.send_message(chat_id=str(chat_id), text="آدرس پیدا نشد.")
+            return HttpResponse(status=status.HTTP_200_OK)
+        coords = None
+        if address.latitude and address.longitude:
+            coords = {"latitude": float(address.latitude), "longitude": float(address.longitude)}
+        vendor = pick_nearest_available_vendor(coords)
+        if not vendor:
+            telegram.send_message(chat_id=str(chat_id), text="در حال حاضر فروشنده‌ای فعال نیست.")
+            return HttpResponse(status=status.HTTP_200_OK)
+
+        ok, delivery_type, delivery_fee, _, _ = evaluate_vendor_serviceability(vendor, coords)
+        if not ok:
+            telegram.send_message(chat_id=str(chat_id), text="ارسال به این آدرس فعال نیست.")
+            return HttpResponse(status=status.HTTP_200_OK)
+
+        products = Product.objects.filter(
+            vendor=vendor, is_active=True, is_available=True, is_available_today=True
+        ).order_by("sort_order", "id")
+
+        tg_user.state = {
+            "address_id": address.id,
+            "vendor_id": vendor.id,
+            "delivery_type": delivery_type,
+            "delivery_fee": delivery_fee or 0,
+            "cart": [],
+        }
+        tg_user.save(update_fields=["state"])
+
+        telegram.send_message(
+            chat_id=str(chat_id),
+            text=f"آشپزخانه انتخاب شد: {vendor.name}\nروش ارسال: {'پس‌کرایه' if delivery_type == 'OUT_OF_ZONE_SNAPP' else 'پیک داخلی'}",
+            reply_markup=telegram.build_menu_keyboard(products),
+        )
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    if data.startswith("product:")):
+        product_id = data.split(":")[1]
+        product = Product.objects.filter(id=product_id, is_active=True, is_available=True, is_available_today=True).first()
+        if not product:
+            telegram.send_message(chat_id=str(chat_id), text="این آیتم در دسترس نیست.")
+            return HttpResponse(status=status.HTTP_200_OK)
+
+        state = tg_user.state or {}
+        if not state.get("cart"):
+            state["cart"] = []
+        state["cart"].append({"product_id": product.id, "quantity": 1})
+        tg_user.state = state
+        tg_user.save(update_fields=["state"])
+
+        telegram.send_message(
+            chat_id=str(chat_id),
+            text=f"{product.name_fa} به سبد خرید اضافه شد.",
+            reply_markup=telegram.build_menu_keyboard(Product.objects.filter(
+                vendor=product.vendor, is_active=True, is_available=True, is_available_today=True
+            ).order_by("sort_order", "id")),
+        )
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    if data == "cart:review":
+        state = tg_user.state or {}
+        cart = state.get("cart") or []
+        if not cart:
+            telegram.send_message(chat_id=str(chat_id), text="سبد خرید خالی است.")
+            return HttpResponse(status=status.HTTP_200_OK)
+        product_ids = [item.get("product_id") for item in cart]
+        products = Product.objects.filter(id__in=product_ids)
+        lines = []
+        total = state.get("delivery_fee") or 0
+        for item in cart:
+            prod = next((p for p in products if str(p.id) == str(item.get("product_id"))), None)
+            if not prod:
+                continue
+            qty = int(item.get("quantity") or 1)
+            line = prod.base_price * qty
+            total += line
+            lines.append(f"{prod.name_fa} × {qty} = {line:,}")
+        lines.append(f"هزینه ارسال: {state.get('delivery_fee') or 0:,}")
+        lines.append(f"جمع کل: {total:,}")
+        telegram.send_message(
+            chat_id=str(chat_id),
+            text="\n".join(lines),
+            reply_markup={"inline_keyboard": [[{"text": "ثبت و پرداخت 💳", "callback_data": "cart:checkout"}]]},
+        )
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    if data == "cart:checkout":
+        state = tg_user.state or {}
+        cart = state.get("cart") or []
+        address_id = state.get("address_id")
+        vendor_id = state.get("vendor_id")
+        delivery_type = state.get("delivery_type")
+        if not cart or not address_id or not vendor_id:
+            telegram.send_message(chat_id=str(chat_id), text="اطلاعات سفارش کامل نیست.")
+            return HttpResponse(status=status.HTTP_200_OK)
+        address = Address.objects.filter(id=address_id, user=user).first()
+        vendor = Vendor.objects.filter(id=vendor_id).first()
+        if not address or not vendor:
+            telegram.send_message(chat_id=str(chat_id), text="آدرس یا فروشنده نامعتبر است.")
+            return HttpResponse(status=status.HTTP_200_OK)
+
+        cart_products = Product.objects.filter(id__in=[item.get("product_id") for item in cart])
+        items_payload = []
+        subtotal = 0
+        for item in cart:
+            prod = next((p for p in cart_products if str(p.id) == str(item.get("product_id"))), None)
+            if not prod:
+                continue
+            qty = int(item.get("quantity") or 1)
+            items_payload.append({"product": prod.id, "quantity": qty})
+            subtotal += prod.base_price * qty
+
+        payload = {
+            "vendor": vendor.id,
+            "delivery_address": address.id,
+            "items": items_payload,
+            "customer_phone": user.phone,
+            "accept_terms": True,
+            "delivery_fee_amount": state.get("delivery_fee") or 0,
+            "delivery_type": delivery_type,
+            "source": "TELEGRAM",
+        }
+        order_serializer = OrderCreateSerializer(data=payload, context={"request": None})
+        if not order_serializer.is_valid():
+            telegram.send_message(chat_id=str(chat_id), text="خطا در ثبت سفارش.")
+            return HttpResponse(status=status.HTTP_200_OK)
+        order = order_serializer.save(user=user)
+        OrderStatusHistory.objects.create(
+            order=order,
+            from_status="",
+            to_status=order.status,
+            changed_by_type="CUSTOMER",
+            changed_by_user=user,
+        )
+        telegram.send_message(
+            chat_id=str(chat_id),
+            text=f"سفارش شما ثبت شد. کد: {order.short_code}\nمبلغ: {order.total_amount:,}",
+            reply_markup=telegram.build_order_action_keyboard(order),
+        )
+        telegram.send_order_notification_to_admin(order)
+        telegram.send_order_notification_to_vendor(order)
+        tg_user.state = {"cart": []}
+        tg_user.save(update_fields=["state"])
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    telegram.send_message(chat_id=str(chat_id), text="دستور ناشناخته است.")
     return HttpResponse(status=status.HTTP_200_OK)
 
 
