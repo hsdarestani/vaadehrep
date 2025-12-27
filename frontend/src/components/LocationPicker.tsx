@@ -65,7 +65,12 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
+  const onChangeRef = useRef(onChange);
   const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   useEffect(() => {
     let destroyed = false;
@@ -86,7 +91,7 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
         mapRef.current.on("click", (e: any) => {
           const coords = { latitude: e.latlng.lat, longitude: e.latlng.lng };
           markerRef.current.setLatLng(e.latlng);
-          onChange(coords);
+          onChangeRef.current(coords);
         });
 
         setReady(true);
@@ -100,9 +105,12 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
       if (mapRef.current) {
         mapRef.current.off();
         mapRef.current.remove();
+        mapRef.current = null;
       }
     };
-  }, [onChange, value?.latitude, value?.longitude]);
+    // We intentionally run this only once to avoid remounting the map container.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!ready || !window.L || !markerRef.current || !value) return;
