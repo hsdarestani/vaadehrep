@@ -437,25 +437,18 @@ class OrderViewSet(viewsets.ModelViewSet):
             return Response({"payment_url": existing_payment_url}, status=status.HTTP_200_OK)
 
         payment = payments.create_payment(order)
-        if not payment:
-            return Response(
-                {"detail": "ایجاد لینک پرداخت ناموفق بود. لطفاً دوباره تلاش کنید."},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
+        payment_url = payment.get("payment_url") or payment.get("paymentUrl") or payment.get("url") if payment else None
+        if payment_url:
+            meta = order.meta or {}
+            meta["payment"] = payment
+            order.meta = meta
+            order.save(update_fields=["meta"])
+            return Response({"payment_url": payment_url}, status=status.HTTP_200_OK)
 
-        payment_url = payment.get("payment_url") or payment.get("paymentUrl") or payment.get("url")
-        if not payment_url:
-            return Response(
-                {"detail": "ایجاد لینک پرداخت ناموفق بود. لطفاً دوباره تلاش کنید."},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-
-        meta = order.meta or {}
-        meta["payment"] = payment
-        order.meta = meta
-        order.save(update_fields=["meta"])
-
-        return Response({"payment_url": payment_url}, status=status.HTTP_200_OK)
+        return Response(
+            {"payment_url": None, "detail": "لینک پرداخت پیدا نشد. لطفاً دوباره تلاش کنید."},
+            status=status.HTTP_200_OK,
+        )
 
     def perform_create(self, serializer):
         order = serializer.save()
