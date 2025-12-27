@@ -26,6 +26,7 @@ class Order(models.Model):
         max_length=20,
         choices=[
             ("DRAFT", "DRAFT"),
+            ("PENDING_PAYMENT", "PENDING_PAYMENT"),
             ("PLACED", "PLACED"),
             ("CONFIRMED", "CONFIRMED"),
             ("PREPARING", "PREPARING"),
@@ -35,7 +36,7 @@ class Order(models.Model):
             ("CANCELLED", "CANCELLED"),
             ("FAILED", "FAILED"),
         ],
-        default="PLACED",
+        default="PENDING_PAYMENT",
         db_index=True,
     )
 

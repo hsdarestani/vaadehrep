@@ -53,6 +53,34 @@ export type Order = {
   total_amount?: number;
   delivery_type?: string | null;
   delivery_is_cash_on_delivery?: boolean;
+  payment_status?: string;
+  items?: OrderItem[];
+  delivery?: OrderDelivery;
+};
+
+export type OrderItem = {
+  id: string;
+  product: number;
+  product_title_snapshot: string;
+  quantity: number;
+  unit_price_snapshot: number;
+  modifiers?: unknown;
+  line_subtotal?: number;
+};
+
+export type OrderDelivery = {
+  id: string;
+  delivery_type?: string;
+  is_cash_on_delivery?: boolean;
+  courier_name?: string;
+  courier_phone?: string;
+  tracking_code?: string;
+  tracking_url?: string;
+  external_delivery_quote_amount?: number;
+  external_delivery_final_amount?: number;
+  external_provider?: string;
+  external_payload?: unknown;
+  created_at?: string;
 };
 
 export type UserProfile = {
