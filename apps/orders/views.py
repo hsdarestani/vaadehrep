@@ -97,6 +97,9 @@ class DeliveryAddressInputSerializer(serializers.Serializer):
 
 class OrderCreateSerializer(OrderSerializer):
     vendor = serializers.PrimaryKeyRelatedField(queryset=Vendor.objects.all(), required=False)
+    delivery_address = serializers.PrimaryKeyRelatedField(
+        queryset=Address.objects.all(), required=False, allow_null=True
+    )
     items = OrderItemInputSerializer(many=True)
     customer_location = CustomerLocationSerializer(required=False)
     customer_phone = serializers.CharField(required=False, allow_blank=True)
