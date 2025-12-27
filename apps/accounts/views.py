@@ -1,11 +1,15 @@
+import hashlib
+import secrets
 from django.contrib.auth import get_user_model
 from rest_framework import serializers, status, viewsets
-from rest_framework.permissions import IsAdminUser
+from rest_framework.permissions import IsAdminUser,AllowAny
 from rest_framework.response import Response
-
+import random
+from django.utils import timezone
+from datetime import timedelta
 from accounts.models import LoginOTP, TelegramUser, UserDevice
 from integrations.services import sms
-
+from django.conf import settings
 
 User = get_user_model()
 
@@ -118,22 +122,85 @@ class TelegramUserViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminUser]
 
 
+def _normalize_phone(raw: str) -> str:
+    if not raw:
+        return ""
+    p = str(raw).strip()
+    # ساده‌ترین نرمال‌سازی: فقط اعداد
+    p = "".join(ch for ch in p if ch.isdigit())
+    return p
+
+
+def _make_otp_code(length: int = 6) -> str:
+    # فقط عددی
+    return "".join(secrets.choice("0123456789") for _ in range(length))
+
+
+def _hash_code(code: str, salt: str) -> str:
+    # sha256(code + ":" + salt)
+    return hashlib.sha256(f"{code}:{salt}".encode("utf-8")).hexdigest()
+
+
 class LoginOTPViewSet(viewsets.ModelViewSet):
     queryset = LoginOTP.objects.all().order_by("-created_at")
     serializer_class = LoginOTPSerializer
-    permission_classes = [IsAdminUser]
 
-    def perform_create(self, serializer):
-        otp = serializer.save()
-        raw_code = self.request.data.get("code") or self.request.data.get("raw_code")
-        if not raw_code:
-            return
-        sms.send_otp(mobile=otp.phone, code=str(raw_code))
+    def get_permissions(self):
+        if self.action == "create":
+            return [AllowAny()]
+        return [IsAdminUser()]
 
     def create(self, request, *args, **kwargs):
-        response = super().create(request, *args, **kwargs)
-        data = response.data
+        # ورودی‌هایی که از فرانت قبول می‌کنیم
+        phone = _normalize_phone(request.data.get("phone"))
+        purpose = (request.data.get("purpose") or "LOGIN").strip().upper()
+
+        if not phone:
+            return Response({"ok": False, "error": "phone is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # TTL از تنظیمات یا پیش‌فرض
+        ttl_seconds = int(getattr(settings, "LOGIN_OTP_TTL_SECONDS", 120))
+        expires_at = timezone.now() + timedelta(seconds=ttl_seconds)
+
+        # تولید کد و هش
+        raw_code = _make_otp_code(length=6)
+        salt = secrets.token_hex(8)
+        code_hash = _hash_code(raw_code, salt)
+
+        # IP و UA
+        ip = request.META.get("HTTP_CF_CONNECTING_IP") or request.META.get("REMOTE_ADDR")
+        user_agent = request.META.get("HTTP_USER_AGENT", "")[:500]
+
+        # ایجاد رکورد (فرانت نباید code_hash/salt/expires_at بدهد؛ اینجا ساخته می‌شود)
+        otp = LoginOTP.objects.create(
+            phone=phone,
+            purpose=purpose,
+            code_hash=code_hash,
+            salt=salt,
+            expires_at=expires_at,
+            ip=ip,
+            user_agent=user_agent,
+        )
+
+        # ارسال پیامک (real یا mock)
+        try:
+            sms.send_otp(mobile=otp.phone, code=raw_code)
+        except Exception as e:
+            # اگر می‌خواهی حتی با خطای SMS هم OTP ساخته شود، همین‌طور بماند.
+            # اگر می‌خواهی rollback شود، اینجا otp.delete() کن.
+            return Response(
+                {"ok": False, "error": f"sms_failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        data = self.get_serializer(otp).data
+        data["ok"] = True
         data["message"] = "OTP created and dispatch attempted"
+
+        # فقط برای تست (در production خاموش)
+        if getattr(settings, "SMS_MODE", "real") == "mock":
+            data["debug_code"] = raw_code
+
         return Response(data, status=status.HTTP_201_CREATED)
 
 
