@@ -169,6 +169,7 @@ SMS_SOAP_BASE_URL = os.getenv("SMS_SOAP_BASE_URL", "https://api.payamak-panel.co
 
 SMS_USERNAME = os.getenv("SMS_USERNAME", "9938980299")
 SMS_PASSWORD = os.getenv("SMS_API_KEY", "2ade25c0-4d13-4141-ba79-eed6b9184dbc")
+SMS_API_KEY = os.getenv("SMS_API_KEY", "2ade25c0-4d13-4141-ba79-eed6b9184dbc")
 SMS_SENDER_NUMBER = os.getenv("SMS_SENDER_NUMBER", "50002710018323")
 SMS_GATEWAY_BASE_URL = os.getenv("SMS_GATEWAY_BASE_URL", "https://api.payamak-panel.com")
 SMS_REST_URL = "https://rest.payamak-panel.com/api/SendSMS/SendSMS"
