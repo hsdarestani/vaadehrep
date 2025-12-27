@@ -2,6 +2,8 @@ from rest_framework import serializers, viewsets
 from rest_framework.permissions import IsAuthenticated
 
 from addresses.models import Address, AddressZoneMatch, DeliveryZone
+from orders.models import Order
+from orders.services import ACTIVE_ORDER_STATUSES
 
 
 class AddressSerializer(serializers.ModelSerializer):
@@ -77,8 +79,24 @@ class AddressViewSet(viewsets.ModelViewSet):
             return qs.filter(user=user)
         return qs
 
+    def _raise_if_locked(self, user):
+        if Order.objects.filter(user=user, status__in=ACTIVE_ORDER_STATUSES).exists():
+            raise serializers.ValidationError("در حال حاضر امکان ویرایش آدرس به دلیل سفارش فعال وجود ندارد.")
+
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        if user and user.is_authenticated and not user.is_staff:
+            self._raise_if_locked(user)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        user = self.request.user
+        if user and user.is_authenticated and not user.is_staff:
+            self._raise_if_locked(user)
+        return super().perform_destroy(instance)
 
 
 class DeliveryZoneViewSet(viewsets.ModelViewSet):

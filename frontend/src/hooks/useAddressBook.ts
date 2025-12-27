@@ -35,5 +35,16 @@ export function useAddressBook(enabled = true) {
     return res.data;
   };
 
-  return { addresses, isLoading, error, createAddress };
+  const updateAddress = async (id: number, payload: Partial<Address>) => {
+    const res = await endpoints.updateAddress(id, payload);
+    setAddresses((prev) => prev.map((addr) => (addr.id === id ? res.data : addr)));
+    return res.data;
+  };
+
+  const removeAddress = async (id: number) => {
+    await endpoints.deleteAddress(id);
+    setAddresses((prev) => prev.filter((addr) => addr.id !== id));
+  };
+
+  return { addresses, isLoading, error, createAddress, updateAddress, removeAddress };
 }

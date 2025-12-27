@@ -1,16 +1,40 @@
+from django.contrib.auth import get_user_model
 from rest_framework import serializers, status, viewsets
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
+from addresses.models import Address
 from catalog.models import Product
 from integrations.services import payments
 from orders.models import Order, OrderDelivery, OrderItem, OrderStatusHistory
-from orders.services import handle_order_status_change, notify_order_created
+from orders.services import (
+    ACTIVE_ORDER_STATUSES,
+    evaluate_vendor_serviceability,
+    handle_order_status_change,
+    notify_order_created,
+    pick_nearest_available_vendor,
+    suggest_products_for_user,
+)
 from vendors.models import Vendor
+from rest_framework_simplejwt.tokens import RefreshToken
+
+User = get_user_model()
+
+
+def _normalize_phone(raw: str) -> str:
+    if not raw:
+        return ""
+    p = str(raw).strip()
+    return "".join(ch for ch in p if ch.isdigit())
 
 
 class OrderSerializer(serializers.ModelSerializer):
     short_code = serializers.CharField(read_only=True)
+    delivery_type = serializers.CharField(source="delivery.delivery_type", read_only=True)
+    delivery_is_cash_on_delivery = serializers.BooleanField(
+        source="delivery.is_cash_on_delivery", read_only=True, default=None
+    )
 
     def validate_payment_method(self, value):
         if value != "ONLINE":
@@ -41,6 +65,8 @@ class OrderSerializer(serializers.ModelSerializer):
             "cancelled_at",
             "meta",
             "short_code",
+            "delivery_type",
+            "delivery_is_cash_on_delivery",
         ]
         read_only_fields = ["id", "placed_at", "user", "short_code"]
 
@@ -57,13 +83,34 @@ class CustomerLocationSerializer(serializers.Serializer):
     accuracy = serializers.FloatField(required=False)
 
 
+class DeliveryAddressInputSerializer(serializers.Serializer):
+    title = serializers.CharField(required=False, allow_blank=True, default="")
+    full_text = serializers.CharField(required=False, allow_blank=True, default="")
+    latitude = serializers.FloatField(required=False)
+    longitude = serializers.FloatField(required=False)
+    city = serializers.CharField(required=False, allow_blank=True, default="")
+    district = serializers.CharField(required=False, allow_blank=True, default="")
+    street = serializers.CharField(required=False, allow_blank=True, default="")
+    receiver_name = serializers.CharField(required=False, allow_blank=True, default="")
+    receiver_phone = serializers.CharField(required=False, allow_blank=True, default="")
+
+
 class OrderCreateSerializer(OrderSerializer):
     vendor = serializers.PrimaryKeyRelatedField(queryset=Vendor.objects.all(), required=False)
     items = OrderItemInputSerializer(many=True)
     customer_location = CustomerLocationSerializer(required=False)
+    customer_phone = serializers.CharField(required=False, allow_blank=True)
+    accept_terms = serializers.BooleanField()
+    delivery_address_data = DeliveryAddressInputSerializer(required=False, allow_null=True)
 
     class Meta(OrderSerializer.Meta):
-        fields = OrderSerializer.Meta.fields + ["items", "customer_location"]
+        fields = OrderSerializer.Meta.fields + [
+            "items",
+            "customer_location",
+            "customer_phone",
+            "accept_terms",
+            "delivery_address_data",
+        ]
         read_only_fields = OrderSerializer.Meta.read_only_fields
 
     def validate_items(self, items):
@@ -92,12 +139,83 @@ class OrderCreateSerializer(OrderSerializer):
         if len(item_vendors) > 1:
             raise serializers.ValidationError("تمام اقلام سفارش باید از یک فروشنده باشند.")
 
-        attrs["vendor"] = input_vendor or items[0]["product"].vendor
+        vendor = input_vendor or items[0]["product"].vendor
+        attrs["vendor"] = vendor
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not (user and user.is_authenticated) and not _normalize_phone(attrs.get("customer_phone", "")):
+            raise serializers.ValidationError({"customer_phone": "شماره موبایل برای ثبت سفارش مهمان لازم است."})
+
+        if not attrs.get("accept_terms"):
+            raise serializers.ValidationError({"accept_terms": "پذیرش قوانین و شرایط الزامی است."})
+
+        coords = attrs.get("customer_location")
+        address = attrs.get("delivery_address")
+        address_data = attrs.get("delivery_address_data") or {}
+        if not coords and address and address.latitude and address.longitude:
+            coords = {"latitude": float(address.latitude), "longitude": float(address.longitude)}
+        elif not coords and address_data and address_data.get("latitude") is not None:
+            coords = {"latitude": address_data.get("latitude"), "longitude": address_data.get("longitude")}
+
+        is_serviceable, delivery_type, delivery_fee, _, _ = evaluate_vendor_serviceability(vendor, coords)
+        if not is_serviceable or not delivery_type:
+            raise serializers.ValidationError("ارسال به این موقعیت برای این فروشنده فعال نیست.")
+
+        attrs["delivery_type"] = delivery_type
+        if coords:
+            attrs["customer_location"] = coords
+        if delivery_fee is not None:
+            attrs["delivery_fee_amount"] = delivery_fee
         return attrs
 
     def create(self, validated_data):
         items = validated_data.pop("items", [])
         customer_location = validated_data.pop("customer_location", None)
+        customer_phone = _normalize_phone(validated_data.pop("customer_phone", ""))
+        accept_terms = validated_data.pop("accept_terms", False)
+        delivery_address_data = validated_data.pop("delivery_address_data", None)
+        delivery_type = validated_data.pop("delivery_type", None)
+
+        request = self.context.get("request")
+        request_user = getattr(request, "user", None)
+
+        if request_user and request_user.is_authenticated:
+            user = request_user
+        else:
+            if not customer_phone:
+                raise serializers.ValidationError("شماره موبایل برای ایجاد حساب لازم است.")
+            user, created = User.objects.get_or_create(phone=customer_phone, defaults={"is_active": True})
+            if created:
+                user.set_unusable_password()
+                user.save(update_fields=["password"])
+            refresh = RefreshToken.for_user(user)
+            self.issued_tokens = {
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "user": {"id": user.id, "phone": user.phone},
+            }
+
+        validated_data["user"] = user
+
+        delivery_address = validated_data.get("delivery_address")
+        if not delivery_address:
+            if not delivery_address_data:
+                raise serializers.ValidationError("آدرس تحویل مشخص نیست.")
+            delivery_address = Address.objects.create(
+                user=user,
+                title=delivery_address_data.get("title") or "آدرس",
+                full_text=delivery_address_data.get("full_text") or "",
+                latitude=delivery_address_data.get("latitude"),
+                longitude=delivery_address_data.get("longitude"),
+                city=delivery_address_data.get("city") or "",
+                district=delivery_address_data.get("district") or "",
+                street=delivery_address_data.get("street") or "",
+                receiver_name=delivery_address_data.get("receiver_name") or "",
+                receiver_phone=_normalize_phone(delivery_address_data.get("receiver_phone", "")),
+                is_default=not Address.objects.filter(user=user).exists(),
+            )
+            validated_data["delivery_address"] = delivery_address
 
         validated_data["payment_method"] = "ONLINE"
 
@@ -128,10 +246,18 @@ class OrderCreateSerializer(OrderSerializer):
         order.total_amount = subtotal - discount_amount + delivery_fee + service_fee
 
         meta = order.meta or {}
+        meta = {**meta, "accept_terms": accept_terms, "delivery_type": delivery_type}
         if customer_location:
             meta = {**meta, "customer_location": customer_location}
         order.meta = meta or None
         order.save(update_fields=["subtotal_amount", "total_amount", "meta"])
+
+        OrderDelivery.objects.create(
+            order=order,
+            delivery_type=delivery_type or "IN_ZONE",
+            is_cash_on_delivery=delivery_type == "OUT_OF_ZONE_SNAPP",
+            external_provider="SNAPP" if delivery_type == "OUT_OF_ZONE_SNAPP" else "",
+        )
 
         return order
 
@@ -191,10 +317,51 @@ class OrderStatusHistorySerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at"]
 
 
+class VendorSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Vendor
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "city",
+            "area",
+            "lat",
+            "lng",
+            "is_accepting_orders",
+            "supports_in_zone_delivery",
+            "supports_out_of_zone_snapp_cod",
+            "max_active_orders",
+        ]
+        read_only_fields = fields
+
+
+class ProductSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Product
+        fields = [
+            "id",
+            "vendor",
+            "category",
+            "name_fa",
+            "short_description",
+            "base_price",
+            "sort_order",
+            "is_available",
+            "is_available_today",
+        ]
+        read_only_fields = fields
+
+
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.all().order_by("-placed_at")
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action == "create":
+            return [AllowAny()]
+        return super().get_permissions()
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -209,13 +376,15 @@ class OrderViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        order = serializer.save(user=self.request.user)
+        order = serializer.save()
+        self.issued_tokens = getattr(serializer, "issued_tokens", None)
+        changed_by_type = "CUSTOMER" if not (self.request.user and self.request.user.is_staff) else "SYSTEM"
         OrderStatusHistory.objects.create(
             order=order,
             from_status="",
             to_status=order.status,
-            changed_by_type="CUSTOMER" if self.request.user and not self.request.user.is_staff else "SYSTEM",
-            changed_by_user=self.request.user if self.request.user.is_authenticated else None,
+            changed_by_type=changed_by_type,
+            changed_by_user=self.request.user if self.request.user.is_authenticated else order.user,
         )
         notify_order_created(order)
 
@@ -251,6 +420,8 @@ class OrderViewSet(viewsets.ModelViewSet):
         headers = self.get_success_headers(serializer.data)
         data = dict(serializer.data)
         data["payment_url"] = payment_url
+        if getattr(self, "issued_tokens", None):
+            data["auth"] = self.issued_tokens
         return Response(data, status=status.HTTP_201_CREATED, headers=headers)
 
 
@@ -291,3 +462,98 @@ class OrderStatusHistoryViewSet(viewsets.ModelViewSet):
         if user and user.is_authenticated and not user.is_staff:
             return qs.filter(order__user=user)
         return qs
+
+
+class ServiceabilityView(APIView):
+    """
+    بررسی در دسترس بودن سرویس، هزینه ارسال و نزدیک‌ترین آشپزخانه.
+    """
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        payload = request.data or {}
+        coords = payload.get("location") or {}
+        address_id = payload.get("address_id")
+        vendor_id = payload.get("vendor")
+        items = payload.get("items") or []
+
+        if address_id:
+            address = Address.objects.filter(id=address_id).first()
+            if address and address.latitude and address.longitude:
+                coords = {"latitude": float(address.latitude), "longitude": float(address.longitude)}
+
+        vendor = None
+        if vendor_id:
+            vendor = Vendor.objects.filter(id=vendor_id, is_active=True, is_visible=True).first()
+        if vendor is None:
+            vendor = pick_nearest_available_vendor(coords)
+
+        response = {
+            "is_serviceable": False,
+            "delivery_type": None,
+            "delivery_fee_amount": 0,
+            "vendor": None,
+            "menu_products": [],
+            "distance_meters": None,
+            "suggested_product_ids": suggest_products_for_user(request.user),
+        }
+
+        active_order = None
+        if request.user and request.user.is_authenticated:
+            current_order = (
+                Order.objects.filter(user=request.user, status__in=ACTIVE_ORDER_STATUSES)
+                .order_by("-placed_at")
+                .first()
+            )
+            if current_order:
+                active_order = {
+                    "id": str(current_order.id),
+                    "short_code": current_order.short_code,
+                    "status": current_order.status,
+                }
+        response["active_order"] = active_order
+
+        if not vendor:
+            response["reason"] = "no_vendor_available"
+            return Response(response)
+
+        is_serviceable, delivery_type, delivery_fee, location, distance_m = evaluate_vendor_serviceability(vendor, coords)
+        if not is_serviceable or not delivery_type:
+            response["reason"] = "location_out_of_range"
+            return Response(response)
+
+        vendor_products = Product.objects.filter(
+            vendor=vendor, is_active=True, is_available=True, is_available_today=True
+        ).order_by("sort_order", "id")
+
+        # اگر آیتم‌های ورودی مربوط به وندور دیگری باشد، اجازه نمی‌دهیم
+        input_product_vendor_ids = {
+            prod.get("vendor") for prod in items if prod and isinstance(prod, dict) and prod.get("vendor") is not None
+        }
+        if input_product_vendor_ids and (vendor.id not in input_product_vendor_ids):
+            response["reason"] = "vendor_mismatch"
+            return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+        response.update(
+            {
+                "is_serviceable": True,
+                "delivery_type": delivery_type,
+                "delivery_fee_amount": delivery_fee or 0,
+                "vendor": VendorSummarySerializer(vendor).data,
+                "menu_products": ProductSummarySerializer(vendor_products, many=True).data,
+                "distance_meters": distance_m,
+                "delivery_is_postpaid": delivery_type == "OUT_OF_ZONE_SNAPP",
+                "delivery_label": "پیک داخلی با هزینه ثابت" if delivery_type == "IN_ZONE" else "ارسال با اسنپ (پس‌کرایه)",
+            }
+        )
+
+        if location:
+            response["nearest_location"] = {
+                "title": location.title,
+                "lat": float(location.lat),
+                "lng": float(location.lng),
+                "service_radius_m": location.service_radius_m,
+            }
+
+        return Response(response, status=status.HTTP_200_OK)

@@ -3,6 +3,7 @@ from rest_framework import routers
 
 from accounts.views import (
     LoginOTPViewSet,
+    SessionView,
     TelegramUserViewSet,
     UserDeviceViewSet,
     UserViewSet,
@@ -18,4 +19,5 @@ router.register(r"user-devices", UserDeviceViewSet)
 urlpatterns = router.urls
 urlpatterns += [
     path("verify-login/", VerifyLoginView.as_view(), name="verify-login"),
+    path("session/", SessionView.as_view(), name="session"),
 ]
