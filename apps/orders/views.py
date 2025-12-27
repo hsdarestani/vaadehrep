@@ -402,10 +402,21 @@ class OrderViewSet(viewsets.ModelViewSet):
             return qs.filter(user=user)
         return qs
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], permission_classes=[AllowAny])
     def pay(self, request, *args, **kwargs):
         order = self.get_object()
-        if not (request.user and (request.user.is_staff or request.user.id == order.user_id)):
+        provided_phone = _normalize_phone(
+            request.data.get("customer_phone")
+            or request.data.get("phone")
+            or request.query_params.get("customer_phone")
+            or request.query_params.get("phone")
+        )
+        normalized_order_phone = _normalize_phone(getattr(order.user, "phone", ""))
+        is_staff_or_owner = request.user and request.user.is_authenticated and (
+            request.user.is_staff or request.user.id == order.user_id
+        )
+        phone_matches = provided_phone and normalized_order_phone and (provided_phone == normalized_order_phone)
+        if not (is_staff_or_owner or phone_matches):
             return Response({"detail": "دسترسی لازم را ندارید."}, status=status.HTTP_403_FORBIDDEN)
 
         if order.payment_status == "PAID":
@@ -416,17 +427,28 @@ class OrderViewSet(viewsets.ModelViewSet):
                 {"detail": "این سفارش در وضعیت قابل پرداخت نیست."}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        payment = payments.create_payment(order)
-        payment_url = None
-        if payment:
-            payment_url = payment.get("payment_url") or payment.get("paymentUrl") or payment.get("url")
-            if payment_url:
-                meta = order.meta or {}
-                meta["payment"] = payment
-                order.meta = meta
-                order.save(update_fields=["meta"])
+        payment_meta = order.meta.get("payment") if isinstance(order.meta, dict) else None
+        existing_payment_url = None
+        if isinstance(payment_meta, dict):
+            existing_payment_url = (
+                payment_meta.get("payment_url") or payment_meta.get("paymentUrl") or payment_meta.get("url")
+            )
+        if existing_payment_url:
+            return Response({"payment_url": existing_payment_url}, status=status.HTTP_200_OK)
 
-        return Response({"payment_url": payment_url}, status=status.HTTP_200_OK)
+        payment = payments.create_payment(order)
+        payment_url = payment.get("payment_url") or payment.get("paymentUrl") or payment.get("url") if payment else None
+        if payment_url:
+            meta = order.meta or {}
+            meta["payment"] = payment
+            order.meta = meta
+            order.save(update_fields=["meta"])
+            return Response({"payment_url": payment_url}, status=status.HTTP_200_OK)
+
+        return Response(
+            {"payment_url": None, "detail": "لینک پرداخت پیدا نشد. لطفاً دوباره تلاش کنید."},
+            status=status.HTTP_200_OK,
+        )
 
     def perform_create(self, serializer):
         order = serializer.save()

@@ -1,11 +1,22 @@
+from django.contrib.auth import get_user_model
 from django.db.models import ProtectedError
 from rest_framework import serializers, status, viewsets
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from addresses.models import Address, AddressZoneMatch, DeliveryZone
 from orders.models import Order
 from orders.services import ACTIVE_ORDER_STATUSES
+from rest_framework_simplejwt.tokens import RefreshToken
+
+User = get_user_model()
+
+
+def _normalize_phone(raw: str) -> str:
+    if not raw:
+        return ""
+    p = str(raw).strip()
+    return "".join(ch for ch in p if ch.isdigit())
 
 
 class AddressSerializer(serializers.ModelSerializer):
@@ -74,6 +85,11 @@ class AddressViewSet(viewsets.ModelViewSet):
     serializer_class = AddressSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_permissions(self):
+        if self.action == "create":
+            return [AllowAny()]
+        return super().get_permissions()
+
     def get_queryset(self):
         qs = super().get_queryset()
         user = self.request.user
@@ -84,9 +100,6 @@ class AddressViewSet(viewsets.ModelViewSet):
     def _raise_if_locked(self, user):
         if Order.objects.filter(user=user, status__in=ACTIVE_ORDER_STATUSES).exists():
             raise serializers.ValidationError("در حال حاضر امکان ویرایش آدرس به دلیل سفارش فعال وجود ندارد.")
-
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
 
     def perform_update(self, serializer):
         user = self.request.user
@@ -108,6 +121,49 @@ class AddressViewSet(viewsets.ModelViewSet):
             instance.is_active = False
             instance.save(update_fields=["is_active", "updated_at"])
             return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def create(self, request, *args, **kwargs):
+        issued_tokens = None
+        request_user = request.user if request.user and request.user.is_authenticated else None
+
+        if not request_user:
+            provided_phone = _normalize_phone(
+                request.data.get("receiver_phone")
+                or request.data.get("phone")
+                or request.data.get("customer_phone")
+                or request.query_params.get("phone")
+                or request.query_params.get("customer_phone")
+            )
+            if not provided_phone:
+                return Response(
+                    {"detail": "شماره موبایل برای ثبت آدرس مهمان لازم است."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            user, created = User.objects.get_or_create(phone=provided_phone, defaults={"is_active": True})
+            if created:
+                user.set_unusable_password()
+                user.save(update_fields=["password"])
+            refresh = RefreshToken.for_user(user)
+            issued_tokens = {
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "user": {"id": user.id, "phone": user.phone},
+            }
+            request_user = user
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        is_first_address = not Address.objects.filter(user=request_user).exists()
+        address = serializer.save(
+            user=request_user,
+            is_default=serializer.validated_data.get("is_default") or is_first_address,
+        )
+        headers = self.get_success_headers(serializer.data)
+        data = self.get_serializer(address).data
+        if issued_tokens:
+            data["auth"] = issued_tokens
+        return Response(data, status=status.HTTP_201_CREATED, headers=headers)
 
 
 class DeliveryZoneViewSet(viewsets.ModelViewSet):
