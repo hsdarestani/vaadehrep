@@ -2,6 +2,7 @@ import logging
 
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
+from django.shortcuts import redirect
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import api_view
@@ -181,7 +182,7 @@ def telegram_webhook(request, secret: str):
 
 
 @csrf_exempt
-@api_view(["POST"])
+@api_view(["POST", "GET"])
 def payment_callback(request):
     verification = payments.verify_payment(request)
     if not verification:
@@ -222,4 +223,15 @@ def payment_callback(request):
         )
         handle_order_status_change(order)
 
-    return JsonResponse({"status": "ok", "order_status": order.status})
+    redirect_url = getattr(settings, "PAYMENT_RETURN_URL", "")
+    if not redirect_url:
+        site_base = getattr(settings, "FRONTEND_BASE_URL", "") or getattr(settings, "SITE_BASE_URL", "")
+        if site_base:
+            redirect_url = f"{site_base.rstrip('/')}/orders"
+
+    response_payload = {"status": "ok", "order_status": order.status}
+    if request.method == "GET" and redirect_url:
+        redirect_target = f"{redirect_url}?order_id={order.id}&payment_status={order.payment_status}"
+        return redirect(redirect_target)
+
+    return JsonResponse(response_payload)

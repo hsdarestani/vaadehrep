@@ -64,6 +64,7 @@ def verify_payment(request: HttpRequest) -> Optional[Dict[str, Any]]:
 
     payload = request.data if hasattr(request, "data") else {}
     payload = payload or getattr(request, "POST", {})
+    payload = payload or getattr(request, "GET", {})
     payload = dict(payload)
     track_id = payload.get("trackId") or payload.get("track_id")
     if not track_id:

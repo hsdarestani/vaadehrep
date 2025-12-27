@@ -90,6 +90,16 @@ export const useCheckout = create<CheckoutState>((set, get) => ({
             }
           : undefined,
       });
+      let paymentUrl = (res.data as { payment_url?: string | null }).payment_url ?? null;
+      const orderId = (res.data as { id?: string | null }).id;
+      if (!paymentUrl && orderId) {
+        try {
+          const paymentRes = await endpoints.payForOrder(String(orderId));
+          paymentUrl = (paymentRes.data as { payment_url?: string | null }).payment_url ?? paymentUrl;
+        } catch {
+          // Swallow payment link errors here; caller can decide on next steps.
+        }
+      }
       useCart.getState().clear();
       if ((res.data as { auth?: { access: string; refresh: string; user: unknown } }).auth) {
         useAuth.getState().applyAuthPayload(res.data.auth as never);
@@ -99,7 +109,7 @@ export const useCheckout = create<CheckoutState>((set, get) => ({
         short_code: String((res.data as { short_code?: string }).short_code || ""),
         status: String((res.data as { status?: string }).status || "PLACED"),
       });
-      return res.data;
+      return { ...(res.data as Record<string, unknown>), payment_url: paymentUrl };
     } finally {
       set({ loading: false, total: payloadTotal });
     }

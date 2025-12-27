@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -400,6 +401,32 @@ class OrderViewSet(viewsets.ModelViewSet):
         if user and user.is_authenticated and not user.is_staff:
             return qs.filter(user=user)
         return qs
+
+    @action(detail=True, methods=["post"])
+    def pay(self, request, *args, **kwargs):
+        order = self.get_object()
+        if not (request.user and (request.user.is_staff or request.user.id == order.user_id)):
+            return Response({"detail": "دسترسی لازم را ندارید."}, status=status.HTTP_403_FORBIDDEN)
+
+        if order.payment_status == "PAID":
+            return Response({"detail": "این سفارش قبلاً پرداخت شده است."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if order.status not in {"PENDING_PAYMENT", "FAILED"}:
+            return Response(
+                {"detail": "این سفارش در وضعیت قابل پرداخت نیست."}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        payment = payments.create_payment(order)
+        payment_url = None
+        if payment:
+            payment_url = payment.get("payment_url") or payment.get("paymentUrl") or payment.get("url")
+            if payment_url:
+                meta = order.meta or {}
+                meta["payment"] = payment
+                order.meta = meta
+                order.save(update_fields=["meta"])
+
+        return Response({"payment_url": payment_url}, status=status.HTTP_200_OK)
 
     def perform_create(self, serializer):
         order = serializer.save()
