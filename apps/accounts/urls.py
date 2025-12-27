@@ -1,3 +1,4 @@
+from django.urls import path
 from rest_framework import routers
 
 from accounts.views import (
@@ -5,6 +6,7 @@ from accounts.views import (
     TelegramUserViewSet,
     UserDeviceViewSet,
     UserViewSet,
+    VerifyLoginView,
 )
 
 router = routers.DefaultRouter()
@@ -14,3 +16,6 @@ router.register(r"login-otps", LoginOTPViewSet)
 router.register(r"user-devices", UserDeviceViewSet)
 
 urlpatterns = router.urls
+urlpatterns += [
+    path("verify-login/", VerifyLoginView.as_view(), name="verify-login"),
+]

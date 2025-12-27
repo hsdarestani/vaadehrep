@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { Address, Order, Product, Vendor } from "./types";
+import type { Address, Order, Product, Vendor, VerifyLoginResponse } from "./types";
 
 export const endpoints = {
   vendors: () => api.get<Vendor[]>("/vendors/vendors/"),
@@ -12,8 +12,7 @@ export const endpoints = {
     api.post("/accounts/login-otps/", {
       phone,
       purpose: "LOGIN",
-      code_hash: "placeholder",
-      salt: "placeholder",
-      expires_at: new Date().toISOString(),
     }),
+  verifyOtp: (payload: { phone: string; code: string; device_id?: string; device_title?: string }) =>
+    api.post<VerifyLoginResponse>("/accounts/verify-login/", payload),
 };

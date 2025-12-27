@@ -2,14 +2,15 @@ import hashlib
 import secrets
 from django.contrib.auth import get_user_model
 from rest_framework import serializers, status, viewsets
-from rest_framework.permissions import IsAdminUser,AllowAny
+from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
-import random
+from rest_framework.views import APIView
 from django.utils import timezone
 from datetime import timedelta
 from accounts.models import LoginOTP, TelegramUser, UserDevice
 from integrations.services import sms
 from django.conf import settings
+from rest_framework_simplejwt.tokens import RefreshToken
 
 User = get_user_model()
 
@@ -208,3 +209,83 @@ class UserDeviceViewSet(viewsets.ModelViewSet):
     queryset = UserDevice.objects.all().order_by("-created_at")
     serializer_class = UserDeviceSerializer
     permission_classes = [IsAdminUser]
+
+
+class VerifyLoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        phone = _normalize_phone(request.data.get("phone"))
+        code = str(request.data.get("code") or "").strip()
+        device_id = (request.data.get("device_id") or "").strip()[:64]
+        device_title = (request.data.get("device_title") or "").strip()[:120]
+
+        if not phone or not code:
+            return Response({"ok": False, "error": "phone_and_code_required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        otp = (
+            LoginOTP.objects.filter(phone=phone, purpose=LoginOTP.PURPOSE_LOGIN)
+            .order_by("-created_at")
+            .first()
+        )
+
+        if not otp:
+            return Response({"ok": False, "error": "otp_not_found"}, status=status.HTTP_404_NOT_FOUND)
+
+        now = timezone.now()
+        if otp.is_used:
+            return Response({"ok": False, "error": "otp_used"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if otp.attempts >= otp.max_attempts:
+            return Response({"ok": False, "error": "too_many_attempts"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+        if now > otp.expires_at:
+            return Response({"ok": False, "error": "otp_expired"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if _hash_code(code, otp.salt) != otp.code_hash:
+            otp.attempts += 1
+            otp.save(update_fields=["attempts"])
+            return Response({"ok": False, "error": "invalid_code"}, status=status.HTTP_400_BAD_REQUEST)
+
+        otp.is_used = True
+        otp.attempts += 1
+        otp.save(update_fields=["is_used", "attempts"])
+
+        user, created = User.objects.get_or_create(phone=phone, defaults={"is_active": True})
+        user.last_login_at = now
+        if created:
+            user.set_unusable_password()
+            user.save(update_fields=["last_login_at", "password"])
+        else:
+            user.save(update_fields=["last_login_at"])
+
+        refresh = RefreshToken.for_user(user)
+        access_token = refresh.access_token
+
+        if device_id:
+            refresh_hash = _hash_code(str(refresh), otp.salt)
+            ip = request.META.get("HTTP_CF_CONNECTING_IP") or request.META.get("REMOTE_ADDR")
+            user_agent = request.META.get("HTTP_USER_AGENT", "")[:500]
+            UserDevice.objects.update_or_create(
+                user=user,
+                device_id=device_id,
+                defaults={
+                    "title": device_title,
+                    "ip": ip,
+                    "user_agent": user_agent,
+                    "refresh_hash": refresh_hash,
+                    "is_active": True,
+                    "last_seen_at": now,
+                },
+            )
+
+        serializer = UserSerializer(user)
+        return Response(
+            {
+                "ok": True,
+                "access": str(access_token),
+                "refresh": str(refresh),
+                "user": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
