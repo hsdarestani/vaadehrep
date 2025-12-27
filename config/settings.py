@@ -103,7 +103,7 @@ DATABASES = {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": os.getenv("POSTGRES_DB", "vaadeh"),
         "USER": os.getenv("POSTGRES_USER", "vaadeh"),
-        "PASSWORD": os.getenv("POSTGRES_PASSWORD", ""),
+        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "Vaadeh!2025Strong"),
         "HOST": os.getenv("POSTGRES_HOST", "127.0.0.1"),
         "PORT": os.getenv("POSTGRES_PORT", "5432"),
     }
@@ -161,14 +161,21 @@ REST_FRAMEWORK = {
 }
 
 # External integrations
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_ADMIN_CHAT_ID = os.getenv("TELEGRAM_ADMIN_CHAT_ID", "")
-TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8308528315:AAGlpyQCvHKgcmRX3KupA1Zr1dSFfTtNIDo")
+TELEGRAM_ADMIN_CHAT_ID = os.getenv("TELEGRAM_ADMIN_CHAT_ID", "316244055")
+TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "dfbdfok2-39gj238=g2h439g4jg=089jb")
+SMS_REST_BASE_URL = os.getenv("SMS_REST_BASE_URL", "https://rest.payamak-panel.com")
+SMS_SOAP_BASE_URL = os.getenv("SMS_SOAP_BASE_URL", "https://api.payamak-panel.com")
 
-SMS_API_KEY = os.getenv("SMS_API_KEY", "")
-SMS_SENDER_NUMBER = os.getenv("SMS_SENDER_NUMBER", "")
-SMS_GATEWAY_BASE_URL = os.getenv("SMS_GATEWAY_BASE_URL", "")
+SMS_USERNAME = os.getenv("SMS_USERNAME", "9938980299")
+SMS_PASSWORD = os.getenv("SMS_API_KEY", "2ade25c0-4d13-4141-ba79-eed6b9184dbc")
+SMS_SENDER_NUMBER = os.getenv("SMS_SENDER_NUMBER", "50002710018323")
+SMS_GATEWAY_BASE_URL = os.getenv("SMS_GATEWAY_BASE_URL", "https://api.payamak-panel.com")
+SMS_REST_URL = "https://rest.payamak-panel.com/api/SendSMS/SendSMS"
+PAYMENT_MERCHANT_ID = os.getenv("PAYMENT_MERCHANT_ID", "2ade25c0-4d13-4141-ba79-eed6b9184dbc")
+PAYMENT_GATEWAY_BASE_URL = os.getenv("PAYMENT_GATEWAY_BASE_URL", "https://gateway.zibal.ir/")
+PAYMENT_CALLBACK_SECRET = os.getenv("PAYMENT_CALLBACK_SECRET", "ascuinfbvw7vh-08437h4397gh3784g43")
 
-PAYMENT_MERCHANT_ID = os.getenv("PAYMENT_MERCHANT_ID", "")
-PAYMENT_GATEWAY_BASE_URL = os.getenv("PAYMENT_GATEWAY_BASE_URL", "")
-PAYMENT_CALLBACK_SECRET = os.getenv("PAYMENT_CALLBACK_SECRET", "")
+
+SMS_OTP_BODY_ID = int("411750")
+SMS_MODE = "real"
