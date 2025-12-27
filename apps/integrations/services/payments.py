@@ -42,9 +42,10 @@ def create_payment(order) -> Optional[Dict[str, Any]]:
         logger.warning("Payment gateway configuration missing; cannot create payment")
         return {"payment_url": None, "message": "gateway_configuration_missing"}
 
+    site_base_url = getattr(settings, "SITE_BASE_URL", "") or getattr(settings, "FRONTEND_BASE_URL", "")
     callback_url = getattr(settings, "PAYMENT_CALLBACK_URL", "")
-    if not callback_url and getattr(settings, "SITE_BASE_URL", ""):
-        callback_url = f"{settings.SITE_BASE_URL.rstrip('/')}{reverse('payment-callback')}"
+    if not callback_url and site_base_url:
+        callback_url = f"{site_base_url.rstrip('/')}{reverse('payment-callback')}"
     if not callback_url:
         logger.warning("Payment callback URL missing; payment request may fail")
 
