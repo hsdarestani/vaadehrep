@@ -21,7 +21,7 @@ export function OrdersPage() {
           <h1 className="section-title" style={{ marginBottom: 8 }}>
             سفارش‌های ثبت شده
           </h1>
-          <p className="section-subtitle">لیست سفارش‌ها بعد از ورود نمایش داده می‌شود.</p>
+          <p className="section-subtitle">همه سفارش‌های شما در این صفحه نمایش داده می‌شود.</p>
         </div>
 
         {isLoading ? (
@@ -33,8 +33,8 @@ export function OrdersPage() {
             {(orders || []).map((order) => (
               <Card
                 key={order.id}
-                title={`سفارش ${order.id}`}
-                description={`وضعیت: ${order.status}`}
+                title={`سفارش ${order.short_code}`}
+                description={`وضعیت: ${translateStatus(order.status)}`}
                 footer={<span className="muted">{formatCurrency(order.total_amount)}</span>}
               >
                 <p className="muted">ثبت شده در: {new Date(order.placed_at).toLocaleString("fa-IR")}</p>
@@ -50,4 +50,18 @@ export function OrdersPage() {
 function formatCurrency(amount?: number | null) {
   const value = amount ?? 0;
   return Intl.NumberFormat("fa-IR", { style: "currency", currency: "IRR", maximumFractionDigits: 0 }).format(value);
+}
+
+function translateStatus(status: string) {
+  const map: Record<string, string> = {
+    PLACED: "ثبت شده",
+    CONFIRMED: "تایید شده",
+    PREPARING: "در حال آماده‌سازی",
+    READY: "آماده تحویل",
+    OUT_FOR_DELIVERY: "در حال ارسال",
+    DELIVERED: "تحویل داده شده",
+    CANCELLED: "لغو شده",
+    FAILED: "ناموفق",
+  };
+  return map[status] ?? status;
 }

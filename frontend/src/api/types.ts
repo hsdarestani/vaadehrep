@@ -43,6 +43,8 @@ export type Order = {
   id: string;
   status: string;
   placed_at: string;
+  short_code: string;
+  payment_url?: string | null;
   total_amount?: number;
 };
 
