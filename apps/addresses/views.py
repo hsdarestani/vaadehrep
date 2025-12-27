@@ -1,5 +1,7 @@
-from rest_framework import serializers, viewsets
+from django.db.models import ProtectedError
+from rest_framework import serializers, status, viewsets
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from addresses.models import Address, AddressZoneMatch, DeliveryZone
 from orders.models import Order
@@ -76,7 +78,7 @@ class AddressViewSet(viewsets.ModelViewSet):
         qs = super().get_queryset()
         user = self.request.user
         if user and user.is_authenticated and not user.is_staff:
-            return qs.filter(user=user)
+            return qs.filter(user=user, is_active=True)
         return qs
 
     def _raise_if_locked(self, user):
@@ -97,6 +99,15 @@ class AddressViewSet(viewsets.ModelViewSet):
         if user and user.is_authenticated and not user.is_staff:
             self._raise_if_locked(user)
         return super().perform_destroy(instance)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError:
+            instance.is_active = False
+            instance.save(update_fields=["is_active", "updated_at"])
+            return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class DeliveryZoneViewSet(viewsets.ModelViewSet):
