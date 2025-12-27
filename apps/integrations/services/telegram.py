@@ -19,12 +19,19 @@ def send_message(
     text: str,
     reply_markup: Optional[Dict[str, Any]] = None,
     parse_mode: Optional[str] = None,
+    disable_web_page_preview: bool = True,
+    protect_content: bool = False,
 ) -> bool:
     if not settings.TELEGRAM_BOT_TOKEN:
         logger.warning("Telegram bot token missing; skipping send_message")
         return False
 
-    payload: Dict[str, Any] = {"chat_id": chat_id, "text": text}
+    payload: Dict[str, Any] = {
+        "chat_id": chat_id,
+        "text": text,
+        "disable_web_page_preview": disable_web_page_preview,
+        "protect_content": protect_content,
+    }
     if reply_markup:
         payload["reply_markup"] = reply_markup
     if parse_mode:
@@ -93,6 +100,35 @@ def build_order_action_keyboard(order) -> Dict[str, Any]:
             [{"text": "لغو سفارش ❌", "callback_data": f"order:{order_id}:CANCELLED"}],
         ]
     }
+
+
+def build_main_menu_keyboard(has_addresses: bool = False, has_active_order: bool = False) -> Dict[str, Any]:
+    inline_keyboard = [
+        [{"text": "سفارش جدید 🍽️", "callback_data": "menu:order"}],
+        [{"text": "آدرس‌ها 📍", "callback_data": "menu:addresses"}],
+    ]
+    if has_addresses:
+        inline_keyboard.insert(1, [{"text": "سفارش مجدد ⚡", "callback_data": "menu:reorder"}])
+    if has_active_order:
+        inline_keyboard.append([{"text": "پیگیری سفارش 🚚", "callback_data": "menu:track"}])
+    return {"inline_keyboard": inline_keyboard}
+
+
+def build_address_keyboard(addresses) -> Dict[str, Any]:
+    rows = []
+    for addr in addresses:
+        label = addr.title or addr.full_text or "آدرس"
+        rows.append([{"text": label[:32], "callback_data": f"address:{addr.id}"}])
+    rows.append([{"text": "ارسال موقعیت زنده 📡", "callback_data": "menu:share_location"}])
+    return {"inline_keyboard": rows}
+
+
+def build_menu_keyboard(products) -> Dict[str, Any]:
+    rows = []
+    for product in products:
+        rows.append([{"text": f"{product.name_fa} • {product.base_price:,}", "callback_data": f"product:{product.id}"}])
+    rows.append([{"text": "سبد خرید 🛒", "callback_data": "cart:review"}])
+    return {"inline_keyboard": rows}
 
 
 def _format_order_text(order) -> str:
