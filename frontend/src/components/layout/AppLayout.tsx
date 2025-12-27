@@ -42,10 +42,6 @@ export function AppLayout({ children }: Props) {
         <div className="container topbar-nav">
           <Link to="/" className="brand-mark" aria-label="وعده">
             <img src="/logo.svg" alt="وعده" className="brand-icon" />
-            <span className="brand-text">
-              <span className="brand-title">وعده</span>
-              <span className="brand-subtitle">A Bite of Calm</span>
-            </span>
           </Link>
 
           <div className="nav-links">
