@@ -1,17 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import type { LatLngExpression } from "leaflet";
-import L from "leaflet";
-import { MapContainer, Marker, TileLayer, useMapEvents } from "react-leaflet";
-
-import "leaflet/dist/leaflet.css";
-
-const markerIcon = new L.Icon({
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-});
+import { useEffect, useRef, useState } from "react";
 
 type Coordinates = { latitude: number; longitude: number };
 
@@ -20,38 +7,108 @@ type LocationPickerProps = {
   onChange: (coords: Coordinates) => void;
 };
 
-function ClickCapture({ onSelect }: { onSelect: (coords: Coordinates) => void }) {
-  useMapEvents({
-    click(e) {
-      onSelect({ latitude: e.latlng.lat, longitude: e.latlng.lng });
-    },
+declare global {
+  interface Window {
+    L?: any;
+  }
+}
+
+function loadLeafletAssets() {
+  return new Promise<void>((resolve, reject) => {
+    if (typeof window === "undefined") {
+      resolve();
+      return;
+    }
+    if (window.L) {
+      resolve();
+      return;
+    }
+
+    const existingScript = document.querySelector('script[data-leaflet="true"]');
+    const existingCss = document.querySelector('link[data-leaflet="true"]');
+    let pending = 0;
+
+    const finish = () => {
+      pending -= 1;
+      if (pending <= 0) resolve();
+    };
+
+    if (!existingCss) {
+      pending += 1;
+      const css = document.createElement("link");
+      css.rel = "stylesheet";
+      css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      css.dataset.leaflet = "true";
+      css.onload = finish;
+      css.onerror = reject;
+      document.head.appendChild(css);
+    }
+
+    if (!existingScript) {
+      pending += 1;
+      const script = document.createElement("script");
+      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+      script.defer = true;
+      script.dataset.leaflet = "true";
+      script.onload = finish;
+      script.onerror = reject;
+      document.body.appendChild(script);
+    }
+
+    if (pending === 0) {
+      resolve();
+    }
   });
-  return null;
 }
 
 export function LocationPicker({ value, onChange }: LocationPickerProps) {
-  const [isClient, setIsClient] = useState(false);
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<any>(null);
+  const markerRef = useRef<any>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    setIsClient(true);
-  }, []);
+    let destroyed = false;
+    loadLeafletAssets()
+      .then(() => {
+        if (destroyed || typeof window === "undefined" || !mapContainerRef.current || !window.L) return;
 
-  const center: LatLngExpression = useMemo(() => {
-    if (value?.latitude && value?.longitude) {
-      return [value.latitude, value.longitude];
-    }
-    return [35.715298, 51.404343]; // Tehran as default
-  }, [value]);
+        const L = window.L;
+        const center: [number, number] = value?.latitude && value?.longitude ? [value.latitude, value.longitude] : [35.715298, 51.404343];
 
-  if (!isClient) return null;
+        mapRef.current = L.map(mapContainerRef.current).setView(center, 15);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: "&copy; OpenStreetMap contributors",
+        }).addTo(mapRef.current);
 
-  return (
-    <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
-      <MapContainer center={center} zoom={15} style={{ height: 320, width: "100%" }}>
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-        <ClickCapture onSelect={onChange} />
-        {value ? <Marker position={[value.latitude, value.longitude]} icon={markerIcon} /> : null}
-      </MapContainer>
-    </div>
-  );
+        markerRef.current = L.marker(center).addTo(mapRef.current);
+
+        mapRef.current.on("click", (e: any) => {
+          const coords = { latitude: e.latlng.lat, longitude: e.latlng.lng };
+          markerRef.current.setLatLng(e.latlng);
+          onChange(coords);
+        });
+
+        setReady(true);
+      })
+      .catch(() => {
+        setReady(false);
+      });
+
+    return () => {
+      destroyed = true;
+      if (mapRef.current) {
+        mapRef.current.off();
+        mapRef.current.remove();
+      }
+    };
+  }, [onChange, value?.latitude, value?.longitude]);
+
+  useEffect(() => {
+    if (!ready || !window.L || !markerRef.current || !value) return;
+    markerRef.current.setLatLng([value.latitude, value.longitude]);
+    mapRef.current?.setView([value.latitude, value.longitude]);
+  }, [ready, value]);
+
+  return <div ref={mapContainerRef} style={{ height: 320, width: "100%", border: "1px solid #e5e7eb", borderRadius: 12 }} />;
 }
