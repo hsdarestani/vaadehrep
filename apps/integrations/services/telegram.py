@@ -119,7 +119,7 @@ def build_address_keyboard(addresses) -> Dict[str, Any]:
     for addr in addresses:
         label = addr.title or addr.full_text or "آدرس"
         rows.append([{"text": label[:32], "callback_data": f"address:{addr.id}"}])
-    rows.append([{"text": "ارسال موقعیت زنده 📡", "request_location": True}])
+    rows.append([{"text": "ارسال موقعیت زنده 📡", "callback_data": "menu:share_location"}])
     return {"inline_keyboard": rows}
 
 
