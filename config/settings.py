@@ -176,6 +176,13 @@ SMS_REST_URL = "https://rest.payamak-panel.com/api/SendSMS/SendSMS"
 PAYMENT_MERCHANT_ID = os.getenv("PAYMENT_MERCHANT_ID", "2ade25c0-4d13-4141-ba79-eed6b9184dbc")
 PAYMENT_GATEWAY_BASE_URL = os.getenv("PAYMENT_GATEWAY_BASE_URL", "https://gateway.zibal.ir/")
 PAYMENT_CALLBACK_SECRET = os.getenv("PAYMENT_CALLBACK_SECRET", "ascuinfbvw7vh-08437h4397gh3784g43")
+PAYMENT_API_KEY = os.getenv("PAYMENT_API_KEY", "")
+
+
+# Deployment URLs
+SITE_BASE_URL = os.getenv("SITE_BASE_URL", "")
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "")
+TELEGRAM_WEBHOOK_URL = os.getenv("TELEGRAM_WEBHOOK_URL", "")
 
 
 # Deployment URLs
