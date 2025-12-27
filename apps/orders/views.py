@@ -445,8 +445,14 @@ class OrderViewSet(viewsets.ModelViewSet):
             order.save(update_fields=["meta"])
             return Response({"payment_url": payment_url}, status=status.HTTP_200_OK)
 
+        detail = payment.get("message") if payment else None
+        result_code = payment.get("result") if payment else None
         return Response(
-            {"payment_url": None, "detail": "لینک پرداخت پیدا نشد. لطفاً دوباره تلاش کنید."},
+            {
+                "payment_url": None,
+                "detail": detail or "لینک پرداخت پیدا نشد. لطفاً دوباره تلاش کنید.",
+                "result": result_code,
+            },
             status=status.HTTP_200_OK,
         )
 
