@@ -103,7 +103,7 @@ class OrderCreateSerializer(OrderSerializer):
     items = OrderItemInputSerializer(many=True)
     customer_location = CustomerLocationSerializer(required=False)
     customer_phone = serializers.CharField(required=False, allow_blank=True)
-    accept_terms = serializers.BooleanField()
+    accept_terms = serializers.BooleanField(write_only=True)
     delivery_address_data = DeliveryAddressInputSerializer(required=False, allow_null=True)
 
     class Meta(OrderSerializer.Meta):
