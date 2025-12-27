@@ -19,7 +19,7 @@ ORDER_STATUS_EVENTS = {
 def notify_order_created(order: Order) -> None:
     telegram.send_order_notification_to_vendor(order)
     telegram.send_order_notification_to_admin(order)
-    sms.send_sms(mobile=order.user.phone, text=f"سفارش شما ثبت شد. شماره سفارش {order.id}")
+    sms.send_sms(mobile=order.user.phone, text=f"سفارش شما ثبت شد. کد سفارش: {order.short_code}")
 
 
 def handle_order_status_change(order: Order, changed_by_user=None) -> None:
@@ -29,7 +29,12 @@ def handle_order_status_change(order: Order, changed_by_user=None) -> None:
         telegram.send_order_notification_to_admin(order)
 
     if order.status in {"CONFIRMED", "OUT_FOR_DELIVERY", "DELIVERED"}:
+        status_texts = {
+            "CONFIRMED": "تایید شد",
+            "OUT_FOR_DELIVERY": "در حال ارسال",
+            "DELIVERED": "تحویل داده شد",
+        }
         sms.send_sms(
             mobile=order.user.phone,
-            text=f"وضعیت سفارش شما: {order.status}",
+            text=f"وضعیت سفارش شما: {status_texts.get(order.status, order.status)}",
         )

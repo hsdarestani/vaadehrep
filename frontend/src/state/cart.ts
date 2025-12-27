@@ -44,7 +44,7 @@ export const useCart = create<CartState>((set) => ({
 type CheckoutState = {
   loading: boolean;
   total: number;
-  submitOrder: (payload: { addressId: string }) => Promise<void>;
+  submitOrder: (payload: { addressId: string }) => Promise<Record<string, unknown>>;
 };
 
 export const useCheckout = create<CheckoutState>((set, get) => ({
@@ -56,7 +56,7 @@ export const useCheckout = create<CheckoutState>((set, get) => ({
     const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const coords = useLocationStore.getState().coords;
     try {
-      await endpoints.createOrder({
+      const res = await endpoints.createOrder({
         delivery_address: addressId,
         payment_method: "ONLINE",
         items: items.map((item) => ({
@@ -74,6 +74,7 @@ export const useCheckout = create<CheckoutState>((set, get) => ({
           : undefined,
       });
       useCart.getState().clear();
+      return res.data;
     } finally {
       set({ loading: false, total });
     }

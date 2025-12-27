@@ -2,9 +2,11 @@ import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { useAddressBook } from "../hooks/useAddressBook";
+import { LocationPicker } from "../components/LocationPicker";
 import { useGeolocation } from "../hooks/useGeolocation";
 import { useAuth } from "../state/auth";
 import { useCheckout } from "../state/cart";
+import { useLocationStore } from "../state/location";
 
 export function CheckoutPage() {
   const navigate = useNavigate();
@@ -17,6 +19,8 @@ export function CheckoutPage() {
   const [newTitle, setNewTitle] = useState("");
   const [newFullText, setNewFullText] = useState("");
   const { coords, status, requestLocation } = useGeolocation(isAuthed);
+  const setCoords = useLocationStore((state) => state.setCoords);
+  const [showMap, setShowMap] = useState(false);
 
   useEffect(() => {
     if (!addresses || addresses.length === 0) return;
@@ -37,7 +41,12 @@ export function CheckoutPage() {
       navigate("/login", { replace: true, state: { from: "/checkout" } });
       return;
     }
-    await submitOrder({ addressId });
+    const data = await submitOrder({ addressId });
+    const paymentUrl = (data?.payment_url as string | undefined) ?? null;
+    if (paymentUrl) {
+      window.location.href = paymentUrl;
+      return;
+    }
     navigate("/orders");
   };
 
@@ -59,7 +68,7 @@ export function CheckoutPage() {
 
   const locationStatusText = useMemo(() => {
     if (status === "granted" && coords) {
-      return `موقعیت دریافت شد (دقت ${coords.accuracy ? Math.round(coords.accuracy) : "?"} متر)`;
+      return "موقعیت دریافت شد.";
     }
     if (status === "prompting") return "در حال دریافت موقعیت...";
     if (status === "denied") return "اجازه دسترسی به موقعیت داده نشد.";
@@ -81,17 +90,40 @@ export function CheckoutPage() {
               </p>
             </div>
 
-            <div className="location-banner">
-              <div>
-                <p className="muted" style={{ margin: 0, fontWeight: 700 }}>
-                  موقعیت شما
-                </p>
-                <strong>{locationStatusText}</strong>
+              <div className="location-banner">
+                <div>
+                  <p className="muted" style={{ margin: 0, fontWeight: 700 }}>
+                    موقعیت شما
+                  </p>
+                  <strong>{locationStatusText}</strong>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button className="secondary-button" type="button" onClick={requestLocation}>
+                    به‌روزرسانی موقعیت
+                  </button>
+                  <button className="ghost-button" type="button" onClick={() => setShowMap((v) => !v)}>
+                    {showMap ? "بستن نقشه" : "انتخاب روی نقشه"}
+                  </button>
+                </div>
               </div>
-              <button className="secondary-button" type="button" onClick={requestLocation}>
-                به‌روزرسانی موقعیت
-              </button>
-            </div>
+
+              {showMap ? (
+                <div className="stacked-form" style={{ marginTop: 16 }}>
+                  <LocationPicker
+                    value={coords ? { latitude: coords.latitude, longitude: coords.longitude } : undefined}
+                    onChange={(nextCoords) => setCoords(nextCoords)}
+                  />
+                  {coords ? (
+                    <p className="muted" style={{ margin: 0 }}>
+                      مختصات انتخاب‌شده: {coords.latitude.toFixed(6)}, {coords.longitude.toFixed(6)}
+                    </p>
+                  ) : (
+                    <p className="muted" style={{ margin: 0 }}>
+                      برای ذخیره موقعیت، روی نقشه کلیک کنید.
+                    </p>
+                  )}
+                </div>
+              ) : null}
 
             <form onSubmit={handleSubmit} className="api-form">
               <div className="input-label">
