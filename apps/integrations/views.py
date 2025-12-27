@@ -21,6 +21,13 @@ from integrations.services import payments, telegram
 logger = logging.getLogger(__name__)
 
 
+def _normalize_phone(raw: str) -> str:
+    if not raw:
+        return ""
+    p = str(raw).strip()
+    return "".join(ch for ch in p if ch.isdigit())
+
+
 class IntegrationProviderSerializer(serializers.ModelSerializer):
     class Meta:
         model = IntegrationProvider
@@ -144,19 +151,28 @@ def telegram_webhook(request, secret: str):
         return HttpResponse(status=status.HTTP_403_FORBIDDEN)
 
     update = request.data or {}
+    callback_query = update.get("callback_query") or {}
+    if callback_query:
+        return _handle_telegram_callback(callback_query)
+
     message = update.get("message") or {}
     chat = message.get("chat") or {}
     chat_id = chat.get("id")
     text = message.get("text", "")
+    contact = message.get("contact") or {}
 
     if not chat_id:
         return HttpResponse(status=status.HTTP_200_OK)
 
     if text.startswith("/start"):
-        telegram.send_message(chat_id=str(chat_id), text="سلام! لطفا شماره موبایل خود را وارد کنید.")
+        telegram.send_message(
+            chat_id=str(chat_id),
+            text="سلام! لطفا شماره موبایل خود را وارد کنید یا دکمه اشتراک‌گذاری شماره را بزنید.",
+            reply_markup={"keyboard": [[{"text": "ارسال شماره", "request_contact": True}]], "resize_keyboard": True},
+        )
         return HttpResponse(status=status.HTTP_200_OK)
 
-    phone = text.strip()
+    phone = _normalize_phone(contact.get("phone_number") if contact else text.strip())
     user = User.objects.filter(phone=phone).first()
     if not user:
         telegram.send_message(chat_id=str(chat_id), text="کاربری با این شماره پیدا نشد.")
@@ -178,6 +194,68 @@ def telegram_webhook(request, secret: str):
         "resize_keyboard": True,
     }
     telegram.send_message(chat_id=str(chat_id), text="حساب شما لینک شد.", reply_markup=reply_markup)
+    return HttpResponse(status=status.HTTP_200_OK)
+
+
+def _handle_telegram_callback(callback_query: dict):
+    data = callback_query.get("data") or ""
+    message = callback_query.get("message") or {}
+    chat = message.get("chat") or {}
+    chat_id = chat.get("id")
+    if not chat_id or not data.startswith("order:"):
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    parts = data.split(":")
+    if len(parts) != 3:
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    _, order_id, target_status = parts
+    from orders.models import Order, OrderStatusHistory  # local import
+    from orders.services import handle_order_status_change
+
+    try:
+        order = Order.objects.get(id=order_id)
+    except Order.DoesNotExist:
+        telegram.send_message(chat_id=str(chat_id), text="سفارش پیدا نشد.")
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    vendor_chat_id = getattr(order.vendor, "telegram_chat_id", "") or ""
+    admin_chat_id = str(settings.TELEGRAM_ADMIN_CHAT_ID) if settings.TELEGRAM_ADMIN_CHAT_ID else ""
+    if str(chat_id) not in {str(vendor_chat_id), admin_chat_id}:
+        telegram.send_message(chat_id=str(chat_id), text="شما مجاز به تغییر این سفارش نیستید.")
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    if target_status == order.status:
+        telegram.send_message(chat_id=str(chat_id), text="وضعیت سفارش قبلاً روی همین حالت است.")
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    valid_statuses = {
+        "CONFIRMED",
+        "PREPARING",
+        "READY",
+        "OUT_FOR_DELIVERY",
+        "DELIVERED",
+        "CANCELLED",
+    }
+    if target_status not in valid_statuses:
+        telegram.send_message(chat_id=str(chat_id), text="دستور ناشناخته است.")
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    previous_status = order.status
+    order.status = target_status
+    order.save(update_fields=["status"])
+    OrderStatusHistory.objects.create(
+        order=order,
+        from_status=previous_status,
+        to_status=order.status,
+        changed_by_type="VENDOR" if str(chat_id) == str(vendor_chat_id) else "ADMIN",
+    )
+    handle_order_status_change(order)
+    telegram.send_message(
+        chat_id=str(chat_id),
+        text=f"وضعیت سفارش به {telegram.status_label(order.status)} تغییر کرد.",
+        reply_markup=telegram.build_order_action_keyboard(order),
+    )
     return HttpResponse(status=status.HTTP_200_OK)
 
 
