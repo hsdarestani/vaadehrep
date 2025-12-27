@@ -93,13 +93,9 @@ a {
 .brand-icon {
   width: 42px;
   height: 42px;
-  display: grid;
-  place-items: center;
+  display: block;
   border-radius: 14px;
-  background: linear-gradient(145deg, var(--brand-500), var(--brand-700));
-  color: #fdfcfb;
-  font-size: 22px;
-  box-shadow: 0 8px 18px rgba(58, 138, 86, 0.24);
+  object-fit: contain;
 }
 
 .brand-text {
