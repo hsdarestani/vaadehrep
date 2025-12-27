@@ -41,7 +41,7 @@ export function AppLayout({ children }: Props) {
       <header className="topbar">
         <div className="container topbar-nav">
           <Link to="/" className="brand-mark" aria-label="وعده">
-            <span className="brand-icon">🌱</span>
+            <img src="/logo.svg" alt="وعده" className="brand-icon" />
             <span className="brand-text">
               <span className="brand-title">وعده</span>
               <span className="brand-subtitle">A Bite of Calm</span>
