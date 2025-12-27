@@ -5,11 +5,11 @@ import { useOrders } from "../hooks/useOrders";
 import { Card } from "../components/common/Card";
 
 export function OrdersPage() {
-  const { user } = useAuth();
+  const { user, activeOrder } = useAuth();
   const { orders, isLoading } = useOrders(!!user);
   const location = useLocation();
 
-  if (!user) {
+  if (!user && !activeOrder) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
@@ -23,6 +23,15 @@ export function OrdersPage() {
           </h1>
           <p className="section-subtitle">همه سفارش‌های شما در این صفحه نمایش داده می‌شود.</p>
         </div>
+
+        {activeOrder ? (
+          <div className="card" style={{ marginBottom: 12 }}>
+            <p style={{ margin: 0, fontWeight: 700 }}>سفارش در حال پردازش</p>
+            <p className="muted" style={{ margin: "4px 0 8px" }}>
+              کد: {activeOrder.short_code} • وضعیت: {translateStatus(activeOrder.status)}
+            </p>
+          </div>
+        ) : null}
 
         {isLoading ? (
           <p className="muted" style={{ textAlign: "center" }}>

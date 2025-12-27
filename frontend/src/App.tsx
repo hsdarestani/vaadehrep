@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+import { useEffect } from "react";
 
 import { AppLayout } from "./components/layout/AppLayout";
 import { AddressesPage } from "./pages/AddressesPage";
@@ -10,8 +11,15 @@ import { MenuPage } from "./pages/MenuPage";
 import { OrdersPage } from "./pages/OrdersPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { VendorPage } from "./pages/VendorPage";
+import { useAuth } from "./state/auth";
 
 function App() {
+  const bootstrapSession = useAuth((s) => s.bootstrapSession);
+
+  useEffect(() => {
+    void bootstrapSession();
+  }, [bootstrapSession]);
+
   return (
     <AppLayout>
       <Routes>

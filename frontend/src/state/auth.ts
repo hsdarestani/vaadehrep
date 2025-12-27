@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 import { endpoints } from "../api/endpoints";
-import type { UserProfile } from "../api/types";
+import type { ActiveOrderSummary, UserProfile } from "../api/types";
 
 const loadStoredUser = (): UserProfile | null => {
   if (typeof window === "undefined") {
@@ -38,14 +38,21 @@ const ensureDeviceId = (): string | undefined => {
 type AuthState = {
   user?: UserProfile | null;
   loading: boolean;
+  activeOrder?: ActiveOrderSummary | null;
+  sessionChecked: boolean;
   requestOtp: (phone: string) => Promise<void>;
   verifyOtp: (phone: string, code: string) => Promise<void>;
+  bootstrapSession: () => Promise<void>;
+  setActiveOrder: (order: ActiveOrderSummary | null) => void;
+  applyAuthPayload: (payload?: { access: string; refresh: string; user: UserProfile }) => void;
   logout: () => void;
 };
 
 export const useAuth = create<AuthState>((set) => ({
   user: loadStoredUser(),
   loading: false,
+  activeOrder: null,
+  sessionChecked: false,
   requestOtp: async (phone: string) => {
     set({ loading: true });
     try {
@@ -64,15 +71,50 @@ export const useAuth = create<AuthState>((set) => ({
       localStorage.setItem("vaadeh_access", data.access);
       localStorage.setItem("vaadeh_refresh", data.refresh);
       localStorage.setItem("vaadeh_user", JSON.stringify(data.user));
-      set({ user: data.user });
+      set({ user: data.user, activeOrder: null });
     } finally {
       set({ loading: false });
     }
+  },
+  bootstrapSession: async () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("vaadeh_access") : null;
+    if (!token) {
+      set({ sessionChecked: true, activeOrder: null });
+      return;
+    }
+    set({ loading: true });
+    try {
+      const { data } = await endpoints.session();
+      if (data.authenticated && data.user) {
+        localStorage.setItem("vaadeh_user", JSON.stringify(data.user));
+        set({ user: data.user, activeOrder: data.active_order ?? null, sessionChecked: true });
+      } else {
+        localStorage.removeItem("vaadeh_access");
+        localStorage.removeItem("vaadeh_refresh");
+        localStorage.removeItem("vaadeh_user");
+        set({ user: null, activeOrder: null, sessionChecked: true });
+      }
+    } catch {
+      localStorage.removeItem("vaadeh_access");
+      localStorage.removeItem("vaadeh_refresh");
+      localStorage.removeItem("vaadeh_user");
+      set({ user: null, activeOrder: null, sessionChecked: true });
+    } finally {
+      set({ loading: false });
+    }
+  },
+  setActiveOrder: (order) => set({ activeOrder: order }),
+  applyAuthPayload: (payload) => {
+    if (!payload) return;
+    localStorage.setItem("vaadeh_access", payload.access);
+    localStorage.setItem("vaadeh_refresh", payload.refresh);
+    localStorage.setItem("vaadeh_user", JSON.stringify(payload.user));
+    set({ user: payload.user });
   },
   logout: () => {
     localStorage.removeItem("vaadeh_access");
     localStorage.removeItem("vaadeh_refresh");
     localStorage.removeItem("vaadeh_user");
-    set({ user: null });
+    set({ user: null, activeOrder: null });
   },
 }));

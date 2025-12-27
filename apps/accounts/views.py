@@ -8,6 +8,8 @@ from rest_framework.views import APIView
 from django.utils import timezone
 from datetime import timedelta
 from accounts.models import LoginOTP, TelegramUser, UserDevice
+from orders.models import Order
+from orders.services import ACTIVE_ORDER_STATUSES
 from integrations.services import sms
 from django.conf import settings
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -289,3 +291,29 @@ class VerifyLoginView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class SessionView(APIView):
+    """
+    بررسی فوری سشن فعلی (JWT) برای شناسایی کاربران بازگشتی.
+    """
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        user = request.user
+        if user and user.is_authenticated:
+            serializer = UserSerializer(user)
+            active_order = (
+                Order.objects.filter(user=user, status__in=ACTIVE_ORDER_STATUSES).order_by("-placed_at").first()
+            )
+            active_summary = None
+            if active_order:
+                active_summary = {
+                    "id": str(active_order.id),
+                    "short_code": active_order.short_code,
+                    "status": active_order.status,
+                }
+            return Response({"authenticated": True, "user": serializer.data, "active_order": active_summary})
+
+        return Response({"authenticated": False})

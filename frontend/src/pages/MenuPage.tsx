@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { useVendorCatalog } from "../hooks/useCatalog";
 import { Card } from "../components/common/Card";
+import { LocationPicker } from "../components/LocationPicker";
+import { useGeolocation } from "../hooks/useGeolocation";
+import { useServiceability } from "../state/serviceability";
 import { useCart } from "../state/cart";
+import { useLocationStore } from "../state/location";
 
 export function MenuPage() {
-  const [vendorId, setVendorId] = useState<number | null>(null);
-  const { vendors, products, isLoading } = useVendorCatalog(vendorId || undefined);
+  const { data: service, loading: serviceLoading, evaluate } = useServiceability();
+  const [showMap, setShowMap] = useState(false);
+  const { coords, status, requestLocation } = useGeolocation(true);
+  const setCoords = useLocationStore((state) => state.setCoords);
   const addToCart = useCart((s) => s.add);
   const [feedback, setFeedback] = useState<string | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -19,9 +24,18 @@ export function MenuPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (coords) {
+      void evaluate({ coords });
+    }
+  }, [coords, evaluate]);
+
   const sortedProducts = useMemo(() => {
-    return [...(products || [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-  }, [products]);
+    if (service?.menu_products?.length) {
+      return [...service.menu_products].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+    }
+    return [];
+  }, [service?.menu_products]);
 
   const handleAddToCart = (product: (typeof sortedProducts)[number]) => {
     addToCart({
@@ -38,6 +52,20 @@ export function MenuPage() {
     timerRef.current = window.setTimeout(() => setFeedback(null), 2500);
   };
 
+  const handleManualLocation = (lat: number, lng: number) => {
+    setCoords({ latitude: lat, longitude: lng });
+    void evaluate({ coords: { latitude: lat, longitude: lng } });
+  };
+
+  const locationStatusText = useMemo(() => {
+    if (status === "granted" && coords) return "موقعیت شما ثبت شد و منو بر اساس آن فیلتر شده است.";
+    if (status === "prompting") return "در حال دریافت موقعیت...";
+    if (status === "denied") return "اجازه دسترسی داده نشد. می‌توانید روی نقشه انتخاب کنید.";
+    if (status === "error") return "دریافت موقعیت با خطا مواجه شد.";
+    if (status === "unsupported") return "مرورگر از موقعیت مکانی پشتیبانی نمی‌کند.";
+    return "برای دیدن نزدیک‌ترین آشپزخانه، موقعیت خود را مشخص کنید.";
+  }, [coords, status]);
+
   return (
     <section className="section">
       <div className="container">
@@ -51,23 +79,60 @@ export function MenuPage() {
 
         {feedback ? <div className="feedback success">{feedback}</div> : null}
 
-        <div className="vendor-switcher">
-          {(vendors || []).map((vendor) => (
-            <button
-              key={vendor.id}
-              onClick={() => setVendorId(vendor.id)}
-              className={`pill-option ${vendorId === vendor.id ? "active" : ""}`}
-              style={{ minWidth: 140 }}
-            >
-              {vendor.name}
+        <div className="location-banner">
+          <div>
+            <p className="muted" style={{ margin: 0, fontWeight: 700 }}>
+              موقعیت شما
+            </p>
+            <strong>{locationStatusText}</strong>
+            {service?.vendor ? (
+              <p className="muted" style={{ margin: 0 }}>
+                نزدیک‌ترین آشپزخانه: {service.vendor.name} • ارسال: {service.delivery_label}{" "}
+                {service.delivery_type === "IN_ZONE" ? formatCurrency(service.delivery_fee_amount) : "پس‌کرایه"}
+              </p>
+            ) : null}
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className="secondary-button" type="button" onClick={requestLocation}>
+              دریافت موقعیت خودکار
             </button>
-          ))}
+            <button className="ghost-button" type="button" onClick={() => setShowMap((v) => !v)}>
+              {showMap ? "بستن نقشه" : "انتخاب روی نقشه"}
+            </button>
+            <button className="ghost-button" type="button" onClick={() => evaluate()}>
+              به‌روزرسانی سرویس
+            </button>
+          </div>
         </div>
 
-        {isLoading ? (
+        {showMap ? (
+          <div className="stacked-form" style={{ marginTop: 16 }}>
+            <LocationPicker
+              value={coords ? { latitude: coords.latitude, longitude: coords.longitude } : undefined}
+              onChange={(nextCoords) => handleManualLocation(nextCoords.latitude, nextCoords.longitude)}
+            />
+            {coords ? (
+              <p className="muted" style={{ margin: 0 }}>
+                مختصات انتخاب‌شده: {coords.latitude.toFixed(6)}, {coords.longitude.toFixed(6)}
+              </p>
+            ) : (
+              <p className="muted" style={{ margin: 0 }}>
+                برای فیلتر منو، روی نقشه نقطه‌ی مدنظر را انتخاب کنید.
+              </p>
+            )}
+          </div>
+        ) : null}
+
+        {serviceLoading ? (
           <p className="muted" style={{ textAlign: "center" }}>
             در حال بارگذاری منو...
           </p>
+        ) : !service?.is_serviceable ? (
+          <div className="card" style={{ marginTop: 16 }}>
+            <p className="muted" style={{ margin: 0 }}>
+              هنوز موقعیت شما مشخص نشده است یا در محدوده‌ی پوشش نیستید. لطفا موقعیت خود را تعیین کنید.
+            </p>
+          </div>
         ) : (
           <div className="card-grid centered-grid">
             {sortedProducts.map((product) => (
@@ -82,6 +147,11 @@ export function MenuPage() {
                 }
               >
                 <p style={{ marginTop: 8, fontWeight: 600 }}>{formatCurrency(product.base_price)}</p>
+                {service?.suggested_product_ids?.includes(product.id) ? (
+                  <p className="pill small" style={{ display: "inline-block", marginTop: 8 }}>
+                    پیشنهادی برای شما
+                  </p>
+                ) : null}
               </Card>
             ))}
           </div>

@@ -9,14 +9,15 @@ import { useLocationStore } from "../state/location";
 import { Card } from "../components/common/Card";
 
 export function AddressesPage() {
-  const { user } = useAuth();
+  const { user, activeOrder } = useAuth();
   const location = useLocation();
-  const { addresses, createAddress, isLoading } = useAddressBook(!!user);
+  const { addresses, createAddress, isLoading, removeAddress } = useAddressBook(!!user);
   const [title, setTitle] = useState("");
   const [fullText, setFullText] = useState("");
   const { coords, status, requestLocation } = useGeolocation(!!user);
   const setCoords = useLocationStore((state) => state.setCoords);
   const [showMap, setShowMap] = useState(false);
+  const canModify = !!user && !activeOrder;
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -102,6 +103,7 @@ export function AddressesPage() {
               placeholder="خانه / محل کار"
               required
               className="input-field"
+              disabled={!canModify}
             />
           </label>
           <label>
@@ -112,11 +114,17 @@ export function AddressesPage() {
               required
               rows={3}
               className="input-field"
+              disabled={!canModify}
             />
           </label>
-          <button type="submit" className="primary-button" style={{ width: "100%" }}>
+          <button type="submit" className="primary-button" style={{ width: "100%" }} disabled={!canModify}>
             ذخیره آدرس
           </button>
+          {!canModify ? (
+            <p className="muted" style={{ margin: 0 }}>
+              تا زمانی که سفارش فعالی دارید امکان تغییر یا حذف آدرس وجود ندارد.
+            </p>
+          ) : null}
         </form>
 
         {isLoading ? (
@@ -126,7 +134,28 @@ export function AddressesPage() {
         ) : (
           <div className="card-grid centered-grid">
             {(addresses || []).map((address) => (
-              <Card key={address.id} title={address.title || "آدرس"} description={address.full_text}>
+              <Card
+                key={address.id}
+                title={address.title || "آدرس"}
+                description={
+                  <>
+                    <p style={{ margin: 0 }}>{address.full_text}</p>
+                    <p className="muted" style={{ margin: 0 }}>
+                      شهر: {address.city || "—"}
+                    </p>
+                  </>
+                }
+                footer={
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={() => removeAddress(address.id)}
+                    disabled={!canModify}
+                  >
+                    حذف
+                  </button>
+                }
+              >
                 <p className="muted">شهر: {address.city || "—"}</p>
               </Card>
             ))}
