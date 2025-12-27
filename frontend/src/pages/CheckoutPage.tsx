@@ -20,6 +20,8 @@ export function CheckoutPage() {
   const [addressId, setAddressId] = useState("");
   const [newTitle, setNewTitle] = useState("");
   const [newFullText, setNewFullText] = useState("");
+  const [addressSaved, setAddressSaved] = useState(false);
+  const [addressSaveError, setAddressSaveError] = useState("");
   const [phone, setPhone] = useState(user?.phone || "");
   const [acceptTerms, setAcceptTerms] = useState(false);
   const { coords, status, requestLocation } = useGeolocation(true);
@@ -77,8 +79,14 @@ export function CheckoutPage() {
 
   const handleQuickSaveAddress = async (event?: FormEvent | MouseEvent<HTMLButtonElement>) => {
     event?.preventDefault();
+    setAddressSaved(false);
+    setAddressSaveError("");
     if (!newTitle || !newFullText) return;
-    if (isAuthed && canEditAddresses) {
+    if (!isAuthed) {
+      setAddressSaved(true);
+      return;
+    }
+    try {
       const saved = await createAddress({
         title: newTitle,
         full_text: newFullText,
@@ -89,7 +97,10 @@ export function CheckoutPage() {
         setAddressId(String(saved.id));
         setNewTitle("");
         setNewFullText("");
+        setAddressSaved(true);
       }
+    } catch {
+      setAddressSaveError("ذخیره آدرس با مشکل مواجه شد. دوباره تلاش کن.");
     }
   };
 
@@ -233,6 +244,16 @@ export function CheckoutPage() {
                   >
                     ذخیره و انتخاب آدرس
                   </button>
+                  {addressSaved ? (
+                    <p className="muted" style={{ margin: 0 }}>
+                      آدرس واردشده برای همین سفارش انتخاب شد.
+                    </p>
+                  ) : null}
+                  {addressSaveError ? (
+                    <p className="muted" style={{ margin: 0, color: "var(--color-danger, #d14343)" }}>
+                      {addressSaveError}
+                    </p>
+                  ) : null}
                   {!canEditAddresses && isAuthed ? (
                     <p className="muted" style={{ margin: 0 }}>
                       ویرایش آدرس در زمان داشتن سفارش فعال امکان‌پذیر نیست.
