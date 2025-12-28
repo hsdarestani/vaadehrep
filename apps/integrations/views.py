@@ -61,6 +61,35 @@ def _send_main_menu(tg_user: TelegramUser):
     return HttpResponse(status=status.HTTP_200_OK)
 
 
+def _payment_return_url():
+    redirect_url = getattr(settings, "PAYMENT_RETURN_URL", "")
+    if not redirect_url:
+        site_base = getattr(settings, "FRONTEND_BASE_URL", "") or getattr(settings, "SITE_BASE_URL", "")
+        if site_base:
+            redirect_url = f"{site_base.rstrip('/')}/payment-result"
+    return redirect_url
+
+
+def _redirect_or_json(request, payload, *, status_code=status.HTTP_200_OK, redirect_url=""):
+    redirect_url = redirect_url or _payment_return_url()
+    if request.method == "GET" and redirect_url:
+        query_params = {
+            "order_id": payload.get("order_id"),
+            "order_code": payload.get("order_code"),
+            "payment_status": payload.get("payment_status"),
+            "order_status": payload.get("order_status"),
+            "track_id": payload.get("track_id"),
+            "ref_number": payload.get("ref_number"),
+            "result": payload.get("result"),
+            "message": payload.get("message"),
+        }
+        query_string = urlencode({k: v for k, v in query_params.items() if v not in [None, ""]})
+        redirect_target = f"{redirect_url}?{query_string}" if query_string else redirect_url
+        return redirect(redirect_target)
+
+    return JsonResponse(payload, status=status_code)
+
+
 def _handle_live_location(tg_user: TelegramUser, location: dict):
     chat_id = tg_user.telegram_user_id
     lat = location.get("latitude")
@@ -703,9 +732,26 @@ def _place_order_from_state(tg_user: TelegramUser):
 @csrf_exempt
 @api_view(["POST", "GET"])
 def payment_callback(request):
+    redirect_url = _payment_return_url()
     verification = payments.verify_payment(request)
     if not verification:
-        return JsonResponse({"status": "verification_failed"}, status=status.HTTP_400_BAD_REQUEST)
+        payload_source = {}
+        if hasattr(request, "data"):
+            payload_source = request.data or {}
+        payload_source = payload_source or getattr(request, "POST", {}) or getattr(request, "GET", {})
+        track_id = payload_source.get("trackId") or payload_source.get("track_id")
+        failure_payload = {
+            "status": "verification_failed",
+            "order_status": "FAILED",
+            "payment_status": "FAILED",
+            "order_id": "",
+            "order_code": "",
+            "track_id": track_id,
+            "ref_number": "",
+            "result": None,
+            "message": "",
+        }
+        return _redirect_or_json(request, failure_payload, status_code=status.HTTP_400_BAD_REQUEST, redirect_url=redirect_url)
 
     order_id = verification.get("order_id")
     payment_status = verification.get("status")
@@ -719,7 +765,18 @@ def payment_callback(request):
             # Fall back to comparing short codes derived from the UUID
             order = next((o for o in Order.objects.all() if getattr(o, "short_code", "") == str(order_id)), None)
     if not order:
-        return JsonResponse({"status": "order_not_found"}, status=status.HTTP_404_NOT_FOUND)
+        failure_payload = {
+            "status": "order_not_found",
+            "order_status": "FAILED",
+            "payment_status": verification.get("status") or "FAILED",
+            "order_id": str(order_id) if order_id else "",
+            "order_code": str(order_id) if order_id else "",
+            "track_id": verification.get("track_id"),
+            "ref_number": verification.get("ref_number"),
+            "result": verification.get("result"),
+            "message": verification.get("message"),
+        }
+        return _redirect_or_json(request, failure_payload, status_code=status.HTTP_404_NOT_FOUND, redirect_url=redirect_url)
 
     previous_status = order.status
     previous_payment_status = order.payment_status
@@ -748,12 +805,6 @@ def payment_callback(request):
         )
         handle_order_status_change(order)
 
-    redirect_url = getattr(settings, "PAYMENT_RETURN_URL", "")
-    if not redirect_url:
-        site_base = getattr(settings, "FRONTEND_BASE_URL", "") or getattr(settings, "SITE_BASE_URL", "")
-        if site_base:
-            redirect_url = f"{site_base.rstrip('/')}/payment-result"
-
     response_payload = {
         "status": "ok",
         "order_status": order.status,
@@ -765,19 +816,4 @@ def payment_callback(request):
         "result": verification.get("result"),
         "message": verification.get("message"),
     }
-    if request.method == "GET" and redirect_url:
-        query_params = {
-            "order_id": response_payload["order_id"],
-            "order_code": response_payload["order_code"],
-            "payment_status": response_payload["payment_status"],
-            "order_status": response_payload["order_status"],
-            "track_id": response_payload["track_id"],
-            "ref_number": response_payload["ref_number"],
-            "result": response_payload["result"],
-            "message": response_payload["message"],
-        }
-        query_string = urlencode({k: v for k, v in query_params.items() if v not in [None, ""]})
-        redirect_target = f"{redirect_url}?{query_string}" if query_string else redirect_url
-        return redirect(redirect_target)
-
-    return JsonResponse(response_payload)
+    return _redirect_or_json(request, response_payload, redirect_url=redirect_url)
