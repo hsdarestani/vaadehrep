@@ -648,11 +648,11 @@ def _handle_order_status_callback(chat_id, data: str):
         telegram.send_message(chat_id=str(chat_id), text="امکان تغییر وضعیت این سفارش وجود ندارد.")
         return HttpResponse(status=status.HTTP_200_OK)
 
-    if is_vendor_chat and target_status == "PREPARING" and order.status not in {"PLACED", "CONFIRMED", "PREPARING"}:
+    if is_vendor_chat and target_status == "PREPARING" and order.status not in {"PLACED", "CONFIRMED"}:
         telegram.send_message(chat_id=str(chat_id), text="اول پرداخت و تایید انجام شود، سپس آماده‌سازی را شروع کنید.")
         return HttpResponse(status=status.HTTP_200_OK)
 
-    if is_vendor_chat and target_status == "OUT_FOR_DELIVERY" and order.status not in {"PREPARING", "READY", "CONFIRMED"}:
+    if is_vendor_chat and target_status == "OUT_FOR_DELIVERY" and order.status != "PREPARING":
         telegram.send_message(chat_id=str(chat_id), text="سفارش باید در حال آماده‌سازی باشد تا ارسال شود.")
         return HttpResponse(status=status.HTTP_200_OK)
 

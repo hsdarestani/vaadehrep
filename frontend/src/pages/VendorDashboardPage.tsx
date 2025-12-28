@@ -24,11 +24,11 @@ function statusLabel(status: string) {
 }
 
 function canMarkPreparing(order: VendorOrder) {
-  return ["PLACED", "CONFIRMED", "PREPARING"].includes(order.status);
+  return ["PLACED", "CONFIRMED"].includes(order.status);
 }
 
 function canMarkOutForDelivery(order: VendorOrder) {
-  return ["PREPARING", "READY", "CONFIRMED"].includes(order.status);
+  return order.status === "PREPARING";
 }
 
 function mapLink(order: VendorOrder) {
@@ -87,7 +87,11 @@ export function VendorDashboardPage() {
     }
   };
 
-  const visibleOrders = useMemo(() => orders || [], [orders]);
+  const visibleOrders = useMemo(() => {
+    const sorted = [...(orders || [])];
+    sorted.sort((a, b) => new Date(b.placed_at).getTime() - new Date(a.placed_at).getTime());
+    return sorted;
+  }, [orders]);
 
   if (!vendorRole) {
     return <Navigate to="/login" replace />;
@@ -95,7 +99,7 @@ export function VendorDashboardPage() {
 
   return (
     <section className="section" style={{ paddingTop: 32 }}>
-      <div className="container">
+      <div className="container small" style={{ maxWidth: 720 }}>
         <div className="section-head" style={{ textAlign: "center" }}>
           <span className="section-eyebrow">پنل فروشنده</span>
           <h1 className="section-title" style={{ marginBottom: 8 }}>
@@ -124,26 +128,47 @@ export function VendorDashboardPage() {
           </p>
         ) : null}
 
-        <div className="card-grid centered-grid">
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {visibleOrders.map((order) => {
             const phone = order.customer_phone || "-";
             const locationUrl = mapLink(order);
             const orderActionKeyPreparing = `${order.id}:PREPARING`;
             const orderActionKeyDelivery = `${order.id}:OUT_FOR_DELIVERY`;
+            const status = statusLabel(order.status);
+            const statusTone =
+              order.status === "PREPARING"
+                ? "var(--color-warning, #b07900)"
+                : order.status === "OUT_FOR_DELIVERY"
+                  ? "var(--color-primary, #1a8f2b)"
+                  : "var(--color-muted, #6b7280)";
 
             return (
               <div key={order.id} className="card" style={{ textAlign: "right" }}>
-                <div className="card-head" style={{ marginBottom: 8 }}>
+                <div className="card-head" style={{ marginBottom: 8, display: "flex", justifyContent: "space-between", gap: 12 }}>
                   <h3 style={{ margin: 0 }}>کد سفارش: {order.short_code}</h3>
-                  <p className="muted" style={{ margin: "4px 0" }}>
-                    وضعیت: {statusLabel(order.status)} • مبلغ: {formatCurrency(order.total_amount)}
-                  </p>
-                  <p className="muted" style={{ margin: "4px 0 8px" }}>
-                    ثبت شده: {new Date(order.placed_at).toLocaleString("fa-IR")}
-                  </p>
+                  <span
+                    style={{
+                      alignSelf: "flex-start",
+                      background: `${statusTone}22`,
+                      color: statusTone,
+                      borderRadius: 999,
+                      padding: "6px 12px",
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {status}
+                  </span>
+                </div>
+                <div className="muted" style={{ margin: "0 0 8px" }}>
+                  <span style={{ display: "inline-block", minWidth: 140 }}>ثبت شده:</span>{" "}
+                  {new Date(order.placed_at).toLocaleString("fa-IR")}
+                </div>
+                <div className="muted" style={{ margin: "0 0 12px" }}>
+                  مبلغ: {formatCurrency(order.total_amount)}
                 </div>
 
-                <div style={{ marginBottom: 8 }}>
+                <div style={{ marginBottom: 12 }}>
                   <p style={{ margin: "0 0 4px", fontWeight: 700 }}>اطلاعات مشتری</p>
                   <p className="muted" style={{ margin: 0 }}>
                     {order.customer_name || "مشتری"} •{" "}
@@ -157,7 +182,7 @@ export function VendorDashboardPage() {
                   </p>
                 </div>
 
-                <div style={{ marginBottom: 8 }}>
+                <div style={{ marginBottom: 12 }}>
                   <p style={{ margin: "0 0 4px", fontWeight: 700 }}>آدرس و لوکیشن</p>
                   <p className="muted" style={{ margin: "0 0 4px" }}>{order.delivery_address_text || "—"}</p>
                   {order.delivery_notes ? (
@@ -173,7 +198,7 @@ export function VendorDashboardPage() {
                 </div>
 
                 {order.items && order.items.length ? (
-                  <div style={{ marginBottom: 8 }}>
+                  <div style={{ marginBottom: 12 }}>
                     <p style={{ margin: "0 0 4px", fontWeight: 700 }}>اقلام سفارش</p>
                     <ul style={{ margin: 0, paddingInlineStart: 16 }}>
                       {order.items.map((item) => (

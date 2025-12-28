@@ -613,15 +613,15 @@ class VendorOrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         if order.status in {"CANCELLED", "DELIVERED"}:
             return Response({"detail": "امکان تغییر وضعیت این سفارش وجود ندارد."}, status=status.HTTP_400_BAD_REQUEST)
 
-        if target_status == "PREPARING" and order.status not in {"PLACED", "CONFIRMED", "PREPARING"}:
+        if target_status == "PREPARING" and order.status not in {"PLACED", "CONFIRMED"}:
             return Response(
                 {"detail": "سفارش در وضعیت فعلی قابل ثبت به‌عنوان در حال آماده‌سازی نیست."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if target_status == "OUT_FOR_DELIVERY" and order.status not in {"PREPARING", "READY", "CONFIRMED"}:
+        if target_status == "OUT_FOR_DELIVERY" and order.status != "PREPARING":
             return Response(
-                {"detail": "سفارش باید در حال آماده‌سازی باشد تا به وضعیت ارسال‌شده برود."},
+                {"detail": "ابتدا سفارش را در وضعیت «در حال آماده‌سازی» قرار دهید، سپس ارسال کنید."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
