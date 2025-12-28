@@ -26,6 +26,7 @@ from integrations.models import (
 )
 from integrations.services import payments, sms, telegram
 from orders.models import Order, OrderStatusHistory
+from orders.views import OrderCreateSerializer
 from orders.services import (
     ACTIVE_ORDER_STATUSES,
     evaluate_vendor_serviceability,
