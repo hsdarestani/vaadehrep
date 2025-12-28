@@ -5,6 +5,7 @@ import requests
 from django.conf import settings
 from django.http import HttpRequest
 from django.urls import reverse
+from core.utils import normalize_phone
 
 logger = logging.getLogger(__name__)
 
@@ -30,13 +31,6 @@ def _request_headers() -> Dict[str, str]:
     return headers
 
 
-def _normalize_phone(raw: str) -> str:
-    if not raw:
-        return ""
-    p = str(raw).strip()
-    return "".join(ch for ch in p if ch.isdigit())
-
-
 def create_payment(order) -> Optional[Dict[str, Any]]:
     if not _base_url() or not _merchant_id():
         logger.warning("Payment gateway configuration missing; cannot create payment")
@@ -54,7 +48,7 @@ def create_payment(order) -> Optional[Dict[str, Any]]:
         "amount": order.total_amount,
         "callbackUrl": callback_url,
         "orderId": str(order.short_code),
-        "mobile": _normalize_phone(getattr(order.user, "phone", "")),
+        "mobile": normalize_phone(getattr(order.user, "phone", "")),
         "description": f"Order {order.short_code}",
     }
 

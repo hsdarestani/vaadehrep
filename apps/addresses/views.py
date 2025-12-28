@@ -8,15 +8,9 @@ from addresses.models import Address, AddressZoneMatch, DeliveryZone
 from orders.models import Order
 from orders.services import ACTIVE_ORDER_STATUSES
 from rest_framework_simplejwt.tokens import RefreshToken
+from core.utils import normalize_phone
 
 User = get_user_model()
-
-
-def _normalize_phone(raw: str) -> str:
-    if not raw:
-        return ""
-    p = str(raw).strip()
-    return "".join(ch for ch in p if ch.isdigit())
 
 
 class AddressSerializer(serializers.ModelSerializer):
@@ -127,7 +121,7 @@ class AddressViewSet(viewsets.ModelViewSet):
         request_user = request.user if request.user and request.user.is_authenticated else None
 
         if not request_user:
-            provided_phone = _normalize_phone(
+            provided_phone = normalize_phone(
                 request.data.get("receiver_phone")
                 or request.data.get("phone")
                 or request.data.get("customer_phone")
