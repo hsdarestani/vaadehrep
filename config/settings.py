@@ -178,6 +178,8 @@ PAYMENT_MERCHANT_ID = os.getenv("PAYMENT_MERCHANT_ID", "69414520666ab900245704e8
 PAYMENT_GATEWAY_BASE_URL = os.getenv("PAYMENT_GATEWAY_BASE_URL", "https://gateway.zibal.ir/")
 PAYMENT_CALLBACK_SECRET = os.getenv("PAYMENT_CALLBACK_SECRET", "ascuinfbvw7vh-08437h4397gh3784g43")
 PAYMENT_API_KEY = os.getenv("PAYMENT_API_KEY", "")
+PAYMENT_CALLBACK_URL = os.getenv("PAYMENT_CALLBACK_URL", "https://vaadeh.com/api/integrations/payments/callback/")
+PAYMENT_RETURN_URL = os.getenv("PAYMENT_RETURN_URL", "https://vaadeh.com/payment-result")
 
 
 
