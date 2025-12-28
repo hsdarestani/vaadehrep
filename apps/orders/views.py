@@ -9,6 +9,7 @@ from addresses.models import Address
 from catalog.models import Product
 from integrations.services import payments
 from orders.models import Order, OrderDelivery, OrderItem, OrderStatusHistory
+from orders.modifiers import build_option_group_payload, normalize_modifiers
 from orders.services import (
     ACTIVE_ORDER_STATUSES,
     evaluate_vendor_serviceability,
@@ -288,6 +289,15 @@ class OrderCreateSerializer(OrderSerializer):
         if not attrs.get("accept_terms"):
             raise serializers.ValidationError({"accept_terms": "پذیرش قوانین و شرایط الزامی است."})
 
+        for item in items:
+            product = item["product"]
+            try:
+                normalized_modifiers, modifier_unit_total = normalize_modifiers(product, item.get("modifiers"))
+            except ValueError as exc:
+                raise serializers.ValidationError({"items": str(exc)}) from exc
+            item["modifiers"] = normalized_modifiers
+            item["modifier_unit_total"] = modifier_unit_total
+
         coords = attrs.get("customer_location")
         address = attrs.get("delivery_address")
         address_data = attrs.get("delivery_address_data") or {}
@@ -365,7 +375,8 @@ class OrderCreateSerializer(OrderSerializer):
         for item in items:
             product = item["product"]
             quantity = item.get("quantity") or 1
-            unit_price = product.base_price
+            modifier_unit_total = item.get("modifier_unit_total") or 0
+            unit_price = product.base_price + modifier_unit_total
             line_subtotal = unit_price * quantity
             subtotal += line_subtotal
 
@@ -439,6 +450,8 @@ class VendorSummarySerializer(serializers.ModelSerializer):
 
 
 class ProductSummarySerializer(serializers.ModelSerializer):
+    option_groups = serializers.SerializerMethodField()
+
     class Meta:
         model = Product
         fields = [
@@ -451,8 +464,12 @@ class ProductSummarySerializer(serializers.ModelSerializer):
             "sort_order",
             "is_available",
             "is_available_today",
+            "option_groups",
         ]
         read_only_fields = fields
+
+    def get_option_groups(self, obj):
+        return build_option_group_payload(obj)
 
 
 class OrderViewSet(viewsets.ModelViewSet):
@@ -740,9 +757,11 @@ class ServiceabilityView(APIView):
             response["reason"] = "location_out_of_range"
             return Response(response)
 
-        vendor_products = Product.objects.filter(
-            vendor=vendor, is_active=True, is_available=True, is_available_today=True
-        ).order_by("sort_order", "id")
+        vendor_products = (
+            Product.objects.filter(vendor=vendor, is_active=True, is_available=True, is_available_today=True)
+            .prefetch_related("product_option_groups__group__items")
+            .order_by("sort_order", "id")
+        )
 
         # اگر آیتم‌های ورودی مربوط به وندور دیگری باشد، اجازه نمی‌دهیم
         input_product_vendor_ids = {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Card } from "../components/common/Card";
 import { LocationPicker } from "../components/LocationPicker";
+import type { OptionGroup, OptionItem, Product } from "../api/types";
 import { useGeolocation } from "../hooks/useGeolocation";
 import { useServiceability } from "../state/serviceability";
 import { useCart } from "../state/cart";
@@ -14,6 +15,8 @@ export function MenuPage() {
   const setCoords = useLocationStore((state) => state.setCoords);
   const addToCart = useCart((s) => s.add);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [optionSelections, setOptionSelections] = useState<Record<number, Record<number, number>>>({});
   const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -38,19 +41,132 @@ export function MenuPage() {
   }, [service?.menu_products]);
 
   const handleAddToCart = (product: (typeof sortedProducts)[number]) => {
+    const optionGroups = product.option_groups ?? [];
+    if (!optionGroups.length) {
+      addToCart({
+        id: createCartItemId(),
+        productId: product.id,
+        title: product.name_fa,
+        price: product.base_price || 0,
+        quantity: 1,
+        options: [],
+      });
+      if (timerRef.current) {
+        window.clearTimeout(timerRef.current);
+      }
+      setFeedback(`${product.name_fa} به سبد خرید اضافه شد`);
+      timerRef.current = window.setTimeout(() => setFeedback(null), 2500);
+      return;
+    }
+    setSelectedProduct(product);
+    const initialSelections: Record<number, Record<number, number>> = {};
+    optionGroups.forEach((group) => {
+      initialSelections[group.id] = {};
+    });
+    setOptionSelections(initialSelections);
+  };
+
+  const closeOptionModal = () => {
+    setSelectedProduct(null);
+    setOptionSelections({});
+  };
+
+  const updateSelection = (group: OptionGroup, item: OptionItem, delta: number) => {
+    setOptionSelections((prev) => {
+      const groupSelections = { ...(prev[group.id] ?? {}) };
+      const currentQty = groupSelections[item.id] ?? 0;
+      if (delta > 0) {
+        if (NO_OPTION_ITEM_NAMES.has(item.name)) {
+          return { ...prev, [group.id]: { [item.id]: 1 } };
+        }
+        for (const selectedId of Object.keys(groupSelections)) {
+          const selectedItem = group.items.find((gItem) => gItem.id === Number(selectedId));
+          if (selectedItem && NO_OPTION_ITEM_NAMES.has(selectedItem.name)) {
+            delete groupSelections[selectedItem.id];
+          }
+        }
+        groupSelections[item.id] = currentQty + 1;
+      } else if (currentQty > 0) {
+        if (currentQty === 1) {
+          delete groupSelections[item.id];
+        } else {
+          groupSelections[item.id] = currentQty - 1;
+        }
+      }
+      return { ...prev, [group.id]: groupSelections };
+    });
+  };
+
+  const handleConfirmOptions = () => {
+    if (!selectedProduct) return;
+    const optionGroups = selectedProduct.option_groups ?? [];
+    const modifiers = optionGroups.map((group) => {
+      const selections = optionSelections[group.id] ?? {};
+      const items = Object.entries(selections).map(([id, quantity]) => {
+        const item = group.items.find((entry) => entry.id === Number(id));
+        return {
+          id: Number(id),
+          name: item?.name ?? "",
+          price_delta_amount: item?.price_delta_amount ?? 0,
+          quantity,
+        };
+      });
+      return { group_id: group.id, group_name: group.name, items };
+    });
+    const modifiersTotal = modifiers.reduce(
+      (sum, group) =>
+        sum +
+        group.items.reduce((groupSum, item) => groupSum + item.price_delta_amount * item.quantity, 0),
+      0,
+    );
     addToCart({
-      productId: product.id,
-      title: product.name_fa,
-      price: product.base_price || 0,
+      id: createCartItemId(),
+      productId: selectedProduct.id,
+      title: selectedProduct.name_fa,
+      price: (selectedProduct.base_price || 0) + modifiersTotal,
       quantity: 1,
-      options: [],
+      options: modifiers,
     });
     if (timerRef.current) {
       window.clearTimeout(timerRef.current);
     }
-    setFeedback(`${product.name_fa} به سبد خرید اضافه شد`);
+    setFeedback(`${selectedProduct.name_fa} به سبد خرید اضافه شد`);
     timerRef.current = window.setTimeout(() => setFeedback(null), 2500);
+    closeOptionModal();
   };
+
+  const optionErrors = useMemo(() => {
+    if (!selectedProduct) return [];
+    const errors: string[] = [];
+    (selectedProduct.option_groups ?? []).forEach((group) => {
+      const selections = optionSelections[group.id] ?? {};
+      const selectedCount = Object.values(selections).reduce((sum, value) => sum + value, 0);
+      const minSelect = group.min_select ?? 0;
+      const requiredMin = minSelect > 0 ? minSelect : group.is_required ? 1 : 0;
+      if (requiredMin && selectedCount < requiredMin) {
+        errors.push(`انتخاب ${group.name} الزامی است.`);
+      }
+      if (group.max_select && selectedCount > group.max_select) {
+        errors.push(`حداکثر انتخاب برای ${group.name} ${group.max_select} است.`);
+      }
+    });
+    return errors;
+  }, [optionSelections, selectedProduct]);
+
+  const optionTotal = useMemo(() => {
+    if (!selectedProduct) return 0;
+    const optionGroups = selectedProduct.option_groups ?? [];
+    return optionGroups.reduce((sum, group) => {
+      const selections = optionSelections[group.id] ?? {};
+      return (
+        sum +
+        Object.entries(selections).reduce((groupSum, [id, qty]) => {
+          const item = group.items.find((entry) => entry.id === Number(id));
+          return groupSum + (item?.price_delta_amount ?? 0) * qty;
+        }, 0)
+      );
+    }, 0);
+  }, [optionSelections, selectedProduct]);
 
   const handleManualLocation = (lat: number, lng: number) => {
     setCoords({ latitude: lat, longitude: lng });
@@ -157,6 +273,107 @@ export function MenuPage() {
           </div>
         )}
       </div>
+
+      {selectedProduct ? (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal-card">
+            <div className="modal-header">
+              <div>
+                <h2>افزودن {selectedProduct.name_fa}</h2>
+                <p className="muted" style={{ margin: 0 }}>
+                  ابتدا سس‌ها را انتخاب کنید، سپس نوشیدنی را مشخص کنید.
+                </p>
+              </div>
+              <button type="button" className="icon-button" onClick={closeOptionModal} aria-label="بستن">
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body">
+              {(selectedProduct.option_groups ?? []).map((group) => {
+                const selections = optionSelections[group.id] ?? {};
+                const selectedCount = Object.values(selections).reduce((sum, value) => sum + value, 0);
+                const minSelect = group.min_select ?? 0;
+                const requiredMin = minSelect > 0 ? minSelect : group.is_required ? 1 : 0;
+                return (
+                  <div key={group.id} className="option-group">
+                    <div className="option-group-header">
+                      <div>
+                        <h3>{group.name}</h3>
+                        {group.description ? <p className="muted">{group.description}</p> : null}
+                      </div>
+                      <span className="pill soft">
+                        {requiredMin ? `حداقل ${requiredMin}` : "اختیاری"} • انتخاب شده {selectedCount}
+                      </span>
+                    </div>
+                    <div className="option-items">
+                      {group.items.map((item) => {
+                        const itemQty = selections[item.id] ?? 0;
+                        const maxedOut = Boolean(group.max_select && selectedCount >= group.max_select);
+                        return (
+                          <div key={item.id} className="option-item">
+                            <div>
+                              <strong>{item.name}</strong>
+                              {item.description ? <p className="muted">{item.description}</p> : null}
+                              {item.price_delta_amount ? (
+                                <p className="muted">افزایش قیمت: {formatCurrency(item.price_delta_amount)}</p>
+                              ) : null}
+                            </div>
+                            <div className="option-qty">
+                              <button
+                                type="button"
+                                className="ghost-button"
+                                onClick={() => updateSelection(group, item, -1)}
+                                disabled={itemQty === 0}
+                              >
+                                −
+                              </button>
+                              <span>{itemQty}</span>
+                              <button
+                                type="button"
+                                className="ghost-button"
+                                onClick={() => updateSelection(group, item, 1)}
+                                disabled={maxedOut}
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="modal-footer">
+              <div>
+                <p className="muted" style={{ margin: 0 }}>
+                  قیمت نهایی
+                </p>
+                <strong>
+                  {formatCurrency((selectedProduct.base_price || 0) + optionTotal)}
+                </strong>
+              </div>
+              <div className="modal-actions">
+                {optionErrors.length ? <span className="error-text">{optionErrors[0]}</span> : null}
+                <button type="button" className="secondary-button" onClick={closeOptionModal}>
+                  انصراف
+                </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={handleConfirmOptions}
+                  disabled={optionErrors.length > 0}
+                >
+                  افزودن به سبد
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -164,4 +381,13 @@ export function MenuPage() {
 function formatCurrency(amount?: number | null) {
   const value = amount ?? 0;
   return Intl.NumberFormat("fa-IR", { style: "currency", currency: "IRR", maximumFractionDigits: 0 }).format(value);
+}
+
+const NO_OPTION_ITEM_NAMES = new Set(["بدون سس", "بدون نوشیدنی", "بدون نوشابه"]);
+
+function createCartItemId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `item_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }

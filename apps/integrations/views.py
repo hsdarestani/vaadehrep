@@ -26,6 +26,7 @@ from integrations.models import (
 )
 from integrations.services import payments, sms, telegram
 from orders.models import Order, OrderStatusHistory
+from orders.modifiers import NO_OPTION_ITEM_NAMES, build_option_group_payload, normalize_modifiers
 from orders.views import OrderCreateSerializer
 from orders.services import (
     ACTIVE_ORDER_STATUSES,
@@ -99,6 +100,43 @@ def _make_otp_code(length: int = 6) -> str:
 
 def _hash_code(code: str, salt: str) -> str:
     return hashlib.sha256(f"{code}:{salt}".encode("utf-8")).hexdigest()
+
+
+def _option_required_min(option_group: dict) -> int:
+    min_select = option_group.get("min_select") or 0
+    if min_select > 0:
+        return min_select
+    return 1 if option_group.get("is_required") else 0
+
+
+def _format_option_selection(option_group: dict, selections: dict) -> str:
+    items = {item["id"]: item for item in option_group.get("items", [])}
+    lines = []
+    for item_id, quantity in selections.items():
+        item = items.get(item_id)
+        if not item or quantity < 1:
+            continue
+        price = item.get("price_delta_amount") or 0
+        price_text = f" (+{price:,})" if price else ""
+        lines.append(f"- {item.get('name')} ×{quantity}{price_text}")
+    return "\n".join(lines)
+
+
+def _build_option_keyboard(option_group: dict, selections: dict) -> dict:
+    rows = []
+    for item in option_group.get("items", []):
+        count = selections.get(item["id"], 0)
+        price = item.get("price_delta_amount") or 0
+        label = item.get("name", "")
+        if price:
+            label += f" (+{price:,})"
+        if count:
+            label += f" ×{count}"
+        rows.append([{"text": label, "callback_data": f"option:pick:{option_group['id']}:{item['id']}"}])
+    rows.append([{"text": "ادامه ✅", "callback_data": "option:next"}])
+    rows.append([{"text": "حذف انتخاب‌ها", "callback_data": "option:reset"}])
+    rows.append([{"text": "انصراف", "callback_data": "option:cancel"}])
+    return {"inline_keyboard": rows}
 
 
 def _get_or_create_user_by_phone(phone: str) -> User:
@@ -835,16 +873,171 @@ def _handle_menu_callback(chat_id, data: str):
         if state.get("vendor_id") and str(state["vendor_id"]) != str(product.vendor_id):
             telegram.send_message(chat_id=str(chat_id), text="آدرس یا فروشنده انتخاب شده با این آیتم سازگار نیست.")
             return HttpResponse(status=status.HTTP_200_OK)
-        state["cart"].append({"product_id": product.id, "quantity": 1})
+        option_groups = build_option_group_payload(product)
+        if not option_groups:
+            state["cart"].append({"product_id": product.id, "quantity": 1, "modifiers": []})
+            tg_user.state = state
+            tg_user.save(update_fields=["state"])
+
+            telegram.send_message(
+                chat_id=str(chat_id),
+                text=f"{product.name_fa} به سبد خرید اضافه شد.",
+                reply_markup=telegram.build_menu_keyboard(Product.objects.filter(
+                    vendor=product.vendor, is_active=True, is_available=True, is_available_today=True
+                ).order_by("sort_order", "id")),
+            )
+            return HttpResponse(status=status.HTTP_200_OK)
+
+        state["option_flow"] = {
+            "product_id": product.id,
+            "group_ids": [group["id"] for group in option_groups],
+            "group_index": 0,
+            "selections": {},
+        }
         tg_user.state = state
         tg_user.save(update_fields=["state"])
 
+        first_group = option_groups[0]
+        required_min = _option_required_min(first_group)
+        requirement_text = f"حداقل انتخاب: {required_min}" if required_min else "اختیاری"
         telegram.send_message(
             chat_id=str(chat_id),
-            text=f"{product.name_fa} به سبد خرید اضافه شد.",
-            reply_markup=telegram.build_menu_keyboard(Product.objects.filter(
-                vendor=product.vendor, is_active=True, is_available=True, is_available_today=True
-            ).order_by("sort_order", "id")),
+            text=f"برای {product.name_fa}، {first_group['name']} را انتخاب کنید.\n{requirement_text}",
+            reply_markup=_build_option_keyboard(first_group, {}),
+        )
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    if data.startswith("option:"):
+        state = tg_user.state or {}
+        option_flow = state.get("option_flow") or {}
+        product_id = option_flow.get("product_id")
+        group_ids = option_flow.get("group_ids") or []
+        group_index = int(option_flow.get("group_index") or 0)
+        if not product_id or not group_ids or group_index >= len(group_ids):
+            telegram.send_message(chat_id=str(chat_id), text="فرآیند انتخاب گزینه‌ها معتبر نیست.")
+            return HttpResponse(status=status.HTTP_200_OK)
+
+        product = Product.objects.filter(id=product_id, is_active=True).first()
+        if not product:
+            telegram.send_message(chat_id=str(chat_id), text="آیتم انتخاب‌شده در دسترس نیست.")
+            return HttpResponse(status=status.HTTP_200_OK)
+
+        option_groups = {group["id"]: group for group in build_option_group_payload(product)}
+        current_group_id = group_ids[group_index]
+        current_group = option_groups.get(current_group_id)
+        if not current_group:
+            telegram.send_message(chat_id=str(chat_id), text="گروه انتخابی یافت نشد.")
+            return HttpResponse(status=status.HTTP_200_OK)
+
+        selections = option_flow.get("selections") or {}
+        group_selections = selections.get(str(current_group_id)) or {}
+        group_selections = {int(k): int(v) for k, v in group_selections.items()}
+
+        action = data.split(":", 2)[1] if ":" in data else ""
+        if action == "pick":
+            parts = data.split(":")
+            if len(parts) < 4:
+                telegram.send_message(chat_id=str(chat_id), text="گزینه انتخابی نامعتبر است.")
+                return HttpResponse(status=status.HTTP_200_OK)
+            item_id = int(parts[3])
+            items_map = {item["id"]: item for item in current_group.get("items", [])}
+            item = items_map.get(item_id)
+            if not item:
+                telegram.send_message(chat_id=str(chat_id), text="گزینه انتخابی نامعتبر است.")
+                return HttpResponse(status=status.HTTP_200_OK)
+            if item["name"] in NO_OPTION_ITEM_NAMES:
+                group_selections = {item_id: 1}
+            else:
+                for selected_id in list(group_selections.keys()):
+                    selected_item = items_map.get(selected_id)
+                    if selected_item and selected_item.get("name") in NO_OPTION_ITEM_NAMES:
+                        group_selections.pop(selected_id, None)
+                group_selections[item_id] = group_selections.get(item_id, 0) + 1
+        elif action == "reset":
+            group_selections = {}
+        elif action == "cancel":
+            state.pop("option_flow", None)
+            tg_user.state = state
+            tg_user.save(update_fields=["state"])
+            telegram.send_message(chat_id=str(chat_id), text="فرآیند انتخاب گزینه‌ها لغو شد.")
+            return HttpResponse(status=status.HTTP_200_OK)
+        elif action == "next":
+            total_selected = sum(group_selections.values())
+            required_min = _option_required_min(current_group)
+            max_select = current_group.get("max_select")
+            if required_min and total_selected < required_min:
+                telegram.send_message(chat_id=str(chat_id), text="ابتدا گزینه‌های لازم را انتخاب کنید.")
+                return HttpResponse(status=status.HTTP_200_OK)
+            if max_select and total_selected > max_select:
+                telegram.send_message(chat_id=str(chat_id), text=f"حداکثر انتخاب مجاز {max_select} است.")
+                return HttpResponse(status=status.HTTP_200_OK)
+            selections[str(current_group_id)] = group_selections
+            option_flow["selections"] = selections
+            option_flow["group_index"] = group_index + 1
+            if option_flow["group_index"] >= len(group_ids):
+                modifiers_payload = []
+                for group_id in group_ids:
+                    group_items = selections.get(str(group_id), {})
+                    items_payload = [{"id": item_id, "quantity": qty} for item_id, qty in group_items.items()]
+                    modifiers_payload.append({"group_id": group_id, "items": items_payload})
+                try:
+                    modifiers, modifier_total = normalize_modifiers(product, modifiers_payload)
+                except ValueError as exc:
+                    telegram.send_message(chat_id=str(chat_id), text=str(exc))
+                    return HttpResponse(status=status.HTTP_200_OK)
+
+                state.setdefault("cart", []).append(
+                    {
+                        "product_id": product.id,
+                        "quantity": 1,
+                        "modifiers": modifiers,
+                        "modifier_unit_total": modifier_total,
+                    }
+                )
+                state.pop("option_flow", None)
+                tg_user.state = state
+                tg_user.save(update_fields=["state"])
+                telegram.send_message(
+                    chat_id=str(chat_id),
+                    text=f"{product.name_fa} به سبد خرید اضافه شد.",
+                    reply_markup=telegram.build_menu_keyboard(Product.objects.filter(
+                        vendor=product.vendor, is_active=True, is_available=True, is_available_today=True
+                    ).order_by("sort_order", "id")),
+                )
+                return HttpResponse(status=status.HTTP_200_OK)
+
+            next_group_id = group_ids[option_flow["group_index"]]
+            next_group = option_groups.get(next_group_id)
+            selections = option_flow.get("selections") or {}
+            tg_user.state = state
+            tg_user.save(update_fields=["state"])
+            required_min = _option_required_min(next_group)
+            requirement_text = f"حداقل انتخاب: {required_min}" if required_min else "اختیاری"
+            telegram.send_message(
+                chat_id=str(chat_id),
+                text=f"مرحله بعد: {next_group['name']}\n{requirement_text}",
+                reply_markup=_build_option_keyboard(next_group, selections.get(str(next_group_id), {})),
+            )
+            return HttpResponse(status=status.HTTP_200_OK)
+        else:
+            telegram.send_message(chat_id=str(chat_id), text="دستور نامعتبر است.")
+            return HttpResponse(status=status.HTTP_200_OK)
+
+        selections[str(current_group_id)] = group_selections
+        option_flow["selections"] = selections
+        state["option_flow"] = option_flow
+        tg_user.state = state
+        tg_user.save(update_fields=["state"])
+        summary = _format_option_selection(current_group, group_selections)
+        required_min = _option_required_min(current_group)
+        requirement_text = f"حداقل انتخاب: {required_min}" if required_min else "اختیاری"
+        text = f"{current_group['name']}\n{requirement_text}"
+        if summary:
+            text += f"\nانتخاب‌های فعلی:\n{summary}"
+        telegram.send_message(
+            chat_id=str(chat_id),
+            text=text,
+            reply_markup=_build_option_keyboard(current_group, group_selections),
         )
         return HttpResponse(status=status.HTTP_200_OK)
 
@@ -863,9 +1056,19 @@ def _handle_menu_callback(chat_id, data: str):
             if not prod:
                 continue
             qty = int(item.get("quantity") or 1)
-            line = prod.base_price * qty
+            modifier_unit_total = item.get("modifier_unit_total") or 0
+            line = (prod.base_price + modifier_unit_total) * qty
             total += line
             lines.append(f"{prod.name_fa} × {qty} = {line:,}")
+            modifiers = item.get("modifiers") or []
+            for group in modifiers:
+                group_items = group.get("items") or []
+                details = []
+                for opt in group_items:
+                    opt_qty = opt.get("quantity") or 1
+                    details.append(f"{opt.get('name')} ×{opt_qty}")
+                if details:
+                    lines.append(f"  • {group.get('group_name')}: {', '.join(details)}")
         lines.append(f"هزینه ارسال: {state.get('delivery_fee') or 0:,}")
         lines.append(f"جمع کل: {total:,}")
         lines.append(f"روش ارسال: {'پس‌کرایه' if state.get('delivery_type') == 'OUT_OF_ZONE_SNAPP' else 'پیک داخلی'}")
@@ -899,7 +1102,7 @@ def _handle_menu_callback(chat_id, data: str):
             if not prod:
                 continue
             qty = int(item.get("quantity") or 1)
-            items_payload.append({"product": prod.id, "quantity": qty})
+            items_payload.append({"product": prod.id, "quantity": qty, "modifiers": item.get("modifiers")})
             subtotal += prod.base_price * qty
 
         order, payment_url, error = _place_order_from_state(tg_user)
@@ -983,7 +1186,7 @@ def _place_order_from_state(tg_user: TelegramUser):
         if not prod:
             continue
         qty = int(item.get("quantity") or 1)
-        items_payload.append({"product": prod.id, "quantity": qty})
+        items_payload.append({"product": prod.id, "quantity": qty, "modifiers": item.get("modifiers")})
 
     if not items_payload:
         return None, None, "هیچ آیتم فعالی در سبد شما نیست."

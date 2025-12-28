@@ -32,6 +32,26 @@ export type Product = {
   is_active?: boolean;
   is_available?: boolean;
   is_available_today?: boolean;
+  option_groups?: OptionGroup[];
+};
+
+export type OptionItem = {
+  id: number;
+  name: string;
+  description?: string;
+  price_delta_amount?: number;
+  sort_order?: number;
+};
+
+export type OptionGroup = {
+  id: number;
+  name: string;
+  description?: string;
+  is_required?: boolean;
+  min_select?: number;
+  max_select?: number;
+  sort_order?: number;
+  items: OptionItem[];
 };
 
 export type Address = {
