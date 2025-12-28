@@ -336,7 +336,7 @@ export function CheckoutPage() {
                       </p>
                     ) : (
                       cartItems.map((item) => (
-                        <div key={item.productId} className="summary-item">
+                        <div key={item.id} className="summary-item">
                           <div>
                             <strong>{item.title}</strong>
                             <p className="muted" style={{ margin: 0 }}>

@@ -5,41 +5,44 @@ import { useAuth } from "./auth";
 import { useLocationStore } from "./location";
 import { useServiceability } from "./serviceability";
 
+export type CartModifierItem = {
+  id: number;
+  name: string;
+  price_delta_amount: number;
+  quantity: number;
+};
+
+export type CartModifierGroup = {
+  group_id: number;
+  group_name: string;
+  items: CartModifierItem[];
+};
+
 export type CartItem = {
+  id: string;
   productId: number;
   title: string;
   price: number;
   quantity: number;
-  options: unknown[];
+  options: CartModifierGroup[];
 };
 
 type CartState = {
   items: CartItem[];
   add: (item: CartItem) => void;
-  updateQty: (productId: number, quantity: number) => void;
-  remove: (productId: number) => void;
+  updateQty: (itemId: string, quantity: number) => void;
+  remove: (itemId: string) => void;
   clear: () => void;
 };
 
 export const useCart = create<CartState>((set) => ({
   items: [],
-  add: (item) =>
-    set((state) => {
-      const existing = state.items.find((i) => i.productId === item.productId);
-      if (existing) {
-        return {
-          items: state.items.map((i) =>
-            i.productId === item.productId ? { ...i, quantity: i.quantity + item.quantity } : i,
-          ),
-        };
-      }
-      return { items: [...state.items, item] };
-    }),
-  updateQty: (productId, quantity) =>
+  add: (item) => set((state) => ({ items: [...state.items, item] })),
+  updateQty: (itemId, quantity) =>
     set((state) => ({
-      items: state.items.map((i) => (i.productId === productId ? { ...i, quantity } : i)),
+      items: state.items.map((i) => (i.id === itemId ? { ...i, quantity } : i)),
     })),
-  remove: (productId) => set((state) => ({ items: state.items.filter((i) => i.productId !== productId) })),
+  remove: (itemId) => set((state) => ({ items: state.items.filter((i) => i.id !== itemId) })),
   clear: () => set({ items: [] }),
 }));
 

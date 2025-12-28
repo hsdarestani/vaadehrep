@@ -32,13 +32,23 @@ export function CartPage() {
           <>
             <div className="card" style={{ display: "grid", gap: 12 }}>
               {items.map((item) => (
-                <div key={item.productId} className="cart-row">
+                <div key={item.id} className="cart-row">
                   <div className="cart-row-info">
                     <div className="cart-row-title">
                       <h3>{item.title}</h3>
                       <span className="pill soft">مجموع {formatCurrency(item.price * item.quantity)}</span>
                     </div>
                     <p className="muted">قیمت هر عدد: {formatCurrency(item.price)}</p>
+                    {item.options?.length ? (
+                      <div className="cart-options">
+                        {item.options.map((group) => (
+                          <div key={group.group_id}>
+                            <span className="muted">{group.group_name}:</span>{" "}
+                            {group.items.map((opt) => `${opt.name} ×${opt.quantity}`).join("، ")}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="cart-row-actions">
                     <label className="input-label compact">
@@ -47,11 +57,11 @@ export function CartPage() {
                         type="number"
                         min={1}
                         value={item.quantity}
-                        onChange={(e) => updateQty(item.productId, Number(e.target.value))}
+                        onChange={(e) => updateQty(item.id, Number(e.target.value))}
                         className="input-field dense"
                       />
                     </label>
-                    <button type="button" className="cart-remove" onClick={() => remove(item.productId)}>
+                    <button type="button" className="cart-remove" onClick={() => remove(item.id)}>
                       <span aria-hidden>✕</span>
                       حذف
                     </button>
