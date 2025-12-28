@@ -110,7 +110,22 @@ export function CheckoutPage() {
     }
   };
 
+  const selectedAddress = useMemo(
+    () => addresses?.find((addr) => String(addr.id) === addressId),
+    [addresses, addressId],
+  );
+
+  const selectedAddressText = useMemo(() => {
+    const fullText = selectedAddress?.full_text?.trim();
+    if (fullText) return fullText;
+    const titleText = selectedAddress?.title?.trim();
+    if (titleText) return titleText;
+    return "";
+  }, [selectedAddress]);
+
   const locationStatusText = useMemo(() => {
+    if (selectedAddressText) return selectedAddressText;
+    if (!addressId && newFullText) return newFullText;
     if (status === "granted" && coords) {
       return "موقعیت دریافت شد.";
     }
@@ -119,7 +134,7 @@ export function CheckoutPage() {
     if (status === "unsupported") return "مرورگر از موقعیت مکانی پشتیبانی نمی‌کند.";
     if (status === "error") return "دریافت موقعیت با خطا روبه‌رو شد.";
     return "برای کمک به رساندن سفارش، موقعیتت را فعال کن.";
-  }, [coords, status]);
+  }, [addressId, coords, newFullText, selectedAddressText, status]);
 
   return (
     <section className="section api-section">
@@ -172,7 +187,7 @@ export function CheckoutPage() {
                   <div className="location-banner elevated">
                     <div>
                       <p className="muted" style={{ margin: 0, fontWeight: 700 }}>
-                        وضعیت موقعیت
+                        آدرس انتخاب‌شده
                       </p>
                       <strong>{locationStatusText}</strong>
                     </div>

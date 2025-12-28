@@ -427,15 +427,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                 {"detail": "این سفارش در وضعیت قابل پرداخت نیست."}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        payment_meta = order.meta.get("payment") if isinstance(order.meta, dict) else None
-        existing_payment_url = None
-        if isinstance(payment_meta, dict):
-            existing_payment_url = (
-                payment_meta.get("payment_url") or payment_meta.get("paymentUrl") or payment_meta.get("url")
-            )
-        if existing_payment_url:
-            return Response({"payment_url": existing_payment_url}, status=status.HTTP_200_OK)
-
         payment = payments.create_payment(order)
         payment_url = payment.get("payment_url") or payment.get("paymentUrl") or payment.get("url") if payment else None
         if payment_url:
