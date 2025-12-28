@@ -10,7 +10,6 @@ type Props = {
 const publicLinks = [
   { to: "/#menu", label: "منوی روز" },
   { to: "/#mission", label: "داستان ما" },
-  { to: "/vendor", label: "همکاری با وعده" },
 ];
 
 const authedLinks = [
@@ -34,7 +33,10 @@ function isActiveLink(
 export function AppLayout({ children }: Props) {
   const location = useLocation();
   const { user, logout } = useAuth();
-  const navLinks = user ? [...publicLinks, ...authedLinks] : publicLinks;
+  const vendorLink = user?.vendor_role
+    ? { to: "/vendor/panel", label: "پنل فروشنده" }
+    : { to: "/vendor", label: "همکاری با وعده" };
+  const navLinks = user ? [...publicLinks, vendorLink, ...authedLinks] : [...publicLinks, vendorLink];
 
   return (
     <div className="app-shell">

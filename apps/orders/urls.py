@@ -7,10 +7,12 @@ from orders.views import (
     OrderStatusHistoryViewSet,
     OrderViewSet,
     ServiceabilityView,
+    VendorOrderViewSet,
 )
 
 router = routers.DefaultRouter()
 router.register(r"orders", OrderViewSet)
+router.register(r"vendor-orders", VendorOrderViewSet, basename="vendor-orders")
 router.register(r"order-items", OrderItemViewSet)
 router.register(r"order-deliveries", OrderDeliveryViewSet)
 router.register(r"order-status-history", OrderStatusHistoryViewSet)

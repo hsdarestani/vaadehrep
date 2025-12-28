@@ -58,6 +58,15 @@ export type Order = {
   delivery?: OrderDelivery;
 };
 
+export type VendorOrder = Order & {
+  customer_name?: string;
+  customer_phone?: string;
+  delivery_address_text?: string;
+  delivery_lat?: number | null;
+  delivery_lng?: number | null;
+  delivery_notes?: string;
+};
+
 export type OrderItem = {
   id: string;
   product: number;
@@ -83,9 +92,18 @@ export type OrderDelivery = {
   created_at?: string;
 };
 
+export type VendorRole = {
+  vendor_id: number;
+  vendor_name: string;
+  vendor_slug?: string;
+  role?: string;
+};
+
 export type UserProfile = {
   id: number | string;
   phone: string;
+  full_name?: string;
+  vendor_role?: VendorRole | null;
 };
 
 export type ActiveOrderSummary = {

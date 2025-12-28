@@ -14,6 +14,10 @@ export function LoginPage() {
 
   useEffect(() => {
     if (user) {
+      if (user.vendor_role) {
+        navigate("/vendor/panel", { replace: true });
+        return;
+      }
       navigate(redirectTo, { replace: true });
     }
   }, [navigate, redirectTo, user]);
@@ -27,6 +31,11 @@ export function LoginPage() {
   const handleVerify = async (event: FormEvent) => {
     event.preventDefault();
     await verifyOtp(phone, code);
+    const nextUser = useAuth.getState().user;
+    if (nextUser?.vendor_role) {
+      navigate("/vendor/panel", { replace: true });
+      return;
+    }
     navigate(redirectTo, { replace: true });
   };
 
