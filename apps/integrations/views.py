@@ -6,7 +6,7 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import serializers, status, viewsets
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import AllowAny, IsAdminUser
 
 from accounts.models import TelegramUser, User
@@ -263,7 +263,8 @@ class ProviderHealthCheckViewSet(viewsets.ModelViewSet):
 
 @csrf_exempt
 @api_view(["POST"])
-@permission_classes([AllowAny])
+@authentication_classes([])          # مهم: هیچ auth کلاس پیش‌فرض اعمال نشود
+@permission_classes([AllowAny])  
 def telegram_webhook(request, secret: str):
     if settings.TELEGRAM_WEBHOOK_SECRET and secret != settings.TELEGRAM_WEBHOOK_SECRET:
         return HttpResponse(status=status.HTTP_403_FORBIDDEN)
@@ -733,6 +734,8 @@ def _place_order_from_state(tg_user: TelegramUser):
 
 @csrf_exempt
 @api_view(["POST", "GET"])
+@authentication_classes([])
+@permission_classes([AllowAny])
 def payment_callback(request):
     redirect_url = _payment_return_url()
     verification = payments.verify_payment(request)
