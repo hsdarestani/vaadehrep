@@ -19,15 +19,9 @@ from orders.services import (
 )
 from vendors.models import Vendor
 from rest_framework_simplejwt.tokens import RefreshToken
+from core.utils import normalize_phone
 
 User = get_user_model()
-
-
-def _normalize_phone(raw: str) -> str:
-    if not raw:
-        return ""
-    p = str(raw).strip()
-    return "".join(ch for ch in p if ch.isdigit())
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -207,7 +201,7 @@ class OrderCreateSerializer(OrderSerializer):
 
         request = self.context.get("request")
         user = getattr(request, "user", None)
-        if not (user and user.is_authenticated) and not _normalize_phone(attrs.get("customer_phone", "")):
+        if not (user and user.is_authenticated) and not normalize_phone(attrs.get("customer_phone", "")):
             raise serializers.ValidationError({"customer_phone": "شماره موبایل برای ثبت سفارش مهمان لازم است."})
 
         if not attrs.get("accept_terms"):
@@ -235,7 +229,7 @@ class OrderCreateSerializer(OrderSerializer):
     def create(self, validated_data):
         items = validated_data.pop("items", [])
         customer_location = validated_data.pop("customer_location", None)
-        customer_phone = _normalize_phone(validated_data.pop("customer_phone", ""))
+        customer_phone = normalize_phone(validated_data.pop("customer_phone", ""))
         accept_terms = validated_data.pop("accept_terms", False)
         delivery_address_data = validated_data.pop("delivery_address_data", None)
         delivery_type = validated_data.pop("delivery_type", None)
@@ -276,7 +270,7 @@ class OrderCreateSerializer(OrderSerializer):
                 district=delivery_address_data.get("district") or "",
                 street=delivery_address_data.get("street") or "",
                 receiver_name=delivery_address_data.get("receiver_name") or "",
-                receiver_phone=_normalize_phone(delivery_address_data.get("receiver_phone", "")),
+                receiver_phone=normalize_phone(delivery_address_data.get("receiver_phone", "")),
                 is_default=not Address.objects.filter(user=user).exists(),
             )
             validated_data["delivery_address"] = delivery_address
@@ -405,13 +399,13 @@ class OrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], permission_classes=[AllowAny])
     def pay(self, request, *args, **kwargs):
         order = self.get_object()
-        provided_phone = _normalize_phone(
+        provided_phone = normalize_phone(
             request.data.get("customer_phone")
             or request.data.get("phone")
             or request.query_params.get("customer_phone")
             or request.query_params.get("phone")
         )
-        normalized_order_phone = _normalize_phone(getattr(order.user, "phone", ""))
+        normalized_order_phone = normalize_phone(getattr(order.user, "phone", ""))
         is_staff_or_owner = request.user and request.user.is_authenticated and (
             request.user.is_staff or request.user.id == order.user_id
         )

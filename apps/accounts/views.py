@@ -13,6 +13,7 @@ from orders.services import ACTIVE_ORDER_STATUSES
 from integrations.services import sms
 from django.conf import settings
 from rest_framework_simplejwt.tokens import RefreshToken
+from core.utils import normalize_phone
 
 User = get_user_model()
 
@@ -125,15 +126,6 @@ class TelegramUserViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminUser]
 
 
-def _normalize_phone(raw: str) -> str:
-    if not raw:
-        return ""
-    p = str(raw).strip()
-    # ساده‌ترین نرمال‌سازی: فقط اعداد
-    p = "".join(ch for ch in p if ch.isdigit())
-    return p
-
-
 def _make_otp_code(length: int = 6) -> str:
     # فقط عددی
     return "".join(secrets.choice("0123456789") for _ in range(length))
@@ -155,7 +147,7 @@ class LoginOTPViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         # ورودی‌هایی که از فرانت قبول می‌کنیم
-        phone = _normalize_phone(request.data.get("phone"))
+        phone = normalize_phone(request.data.get("phone"))
         purpose = (request.data.get("purpose") or "LOGIN").strip().upper()
 
         if not phone:
@@ -217,7 +209,7 @@ class VerifyLoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        phone = _normalize_phone(request.data.get("phone"))
+        phone = normalize_phone(request.data.get("phone"))
         code = str(request.data.get("code") or "").strip()
         device_id = (request.data.get("device_id") or "").strip()[:64]
         device_title = (request.data.get("device_title") or "").strip()[:120]
