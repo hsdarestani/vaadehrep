@@ -101,6 +101,22 @@ def _get_or_create_user_by_phone(phone: str) -> User:
     return user
 
 
+def _link_telegram_user(chat_id, phone_normalized: str, chat: dict) -> TelegramUser:
+    user = _get_or_create_user_by_phone(phone_normalized)
+    tg_user, _ = TelegramUser.objects.update_or_create(
+        telegram_user_id=chat_id,
+        defaults={
+            "user": user,
+            "username": chat.get("username", ""),
+            "first_name": chat.get("first_name", ""),
+            "last_name": chat.get("last_name", ""),
+            "language_code": chat.get("language_code", ""),
+            "is_bot": chat.get("is_bot", False),
+        },
+    )
+    return tg_user
+
+
 def _send_main_menu(tg_user: TelegramUser):
     has_addresses = Address.objects.filter(user=tg_user.user, is_active=True).exists()
     has_active_order = Order.objects.filter(user=tg_user.user, status__in=ACTIVE_ORDER_STATUSES).exists()
@@ -148,18 +164,7 @@ def _send_otp_for_phone(chat_id, phone: str, chat: dict):
         telegram.send_message(chat_id=str(chat_id), text="ارسال کد تایید با خطا مواجه شد. لطفاً دوباره تلاش کنید.")
         return HttpResponse(status=status.HTTP_200_OK)
 
-    user = _get_or_create_user_by_phone(phone_normalized)
-    tg_user, _ = TelegramUser.objects.update_or_create(
-        telegram_user_id=chat_id,
-        defaults={
-            "user": user,
-            "username": chat.get("username", ""),
-            "first_name": chat.get("first_name", ""),
-            "last_name": chat.get("last_name", ""),
-            "language_code": chat.get("language_code", ""),
-            "is_bot": chat.get("is_bot", False),
-        },
-    )
+    tg_user = _link_telegram_user(chat_id, phone_normalized, chat)
 
     _update_state(
         tg_user,
@@ -172,6 +177,27 @@ def _send_otp_for_phone(chat_id, phone: str, chat: dict):
 
     telegram.send_message(chat_id=str(chat_id), text="کد تایید ارسال شد. لطفاً کد ۶ رقمی را وارد کنید.")
     return HttpResponse(status=status.HTTP_200_OK)
+
+
+def _link_phone_without_otp(chat_id, phone: str, chat: dict):
+    if not _is_iranian_phone(phone):
+        telegram.send_message(chat_id=str(chat_id), text="فقط شماره موبایل ایران پذیرفته می‌شود. لطفاً شماره 09... را وارد کنید.")
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    phone_normalized = normalize_phone(phone)
+    tg_user = _link_telegram_user(chat_id, phone_normalized, chat)
+
+    _update_state(
+        tg_user,
+        {
+            "pending_phone": phone_normalized,
+            "otp_verified": True,
+            "awaiting_otp": False,
+        },
+    )
+
+    telegram.send_message(chat_id=str(chat_id), text="حساب شما تایید شد.")
+    return _send_main_menu(tg_user)
 
 
 def _verify_otp_and_link(tg_user: TelegramUser, code: str):
@@ -497,6 +523,8 @@ def telegram_webhook(request, secret: str):
 
     if contact:
         phone = normalize_phone(contact.get("phone_number"))
+        if _is_iranian_phone(phone):
+            return _link_phone_without_otp(chat_id, phone, chat)
         return _send_otp_for_phone(chat_id, phone, chat)
 
     if not tg_user:
