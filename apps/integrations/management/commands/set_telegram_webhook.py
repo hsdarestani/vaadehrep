@@ -41,5 +41,5 @@ class Command(BaseCommand):
             self.stderr.write(self.style.WARNING("SITE_BASE_URL/FRONTEND_BASE_URL missing; webhook URL cannot be built."))
             return ""
 
-        path = reverse("telegram-webhook", kwargs={"secret": secret})
+        path = reverse("integrations:telegram-webhook", kwargs={"secret": secret})
         return f"{base_url.rstrip('/')}{path}"
