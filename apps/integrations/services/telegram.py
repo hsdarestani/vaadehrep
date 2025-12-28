@@ -8,6 +8,18 @@ logger = logging.getLogger(__name__)
 
 
 TELEGRAM_API_BASE = "https://api.telegram.org/bot"
+ORDER_EVENT_LABELS = {
+    "ORDER_CREATED": "ثبت سفارش",
+    "ORDER_PAYMENT_VERIFIED": "پرداخت تایید شد",
+    "ORDER_PENDING_PAYMENT": "در انتظار پرداخت",
+    "ORDER_CONFIRMED": "تایید سفارش",
+    "ORDER_PREPARING": "در حال آماده‌سازی",
+    "ORDER_READY": "آماده تحویل",
+    "ORDER_OUT_FOR_DELIVERY": "ارسال شد",
+    "ORDER_COMPLETED": "تحویل داده شد",
+    "ORDER_CANCELLED": "لغو سفارش",
+    "ORDER_FAILED": "ناموفق",
+}
 
 
 def _bot_url(path: str) -> str:
@@ -144,21 +156,61 @@ def _format_order_text(order) -> str:
     return "\n".join(parts)
 
 
-def send_order_notification_to_vendor(order) -> None:
+def _event_label(event: Optional[str]) -> str:
+    if not event:
+        return ""
+    return ORDER_EVENT_LABELS.get(event, event)
+
+
+def _format_vendor_admin_order_event_text(order, event: Optional[str]) -> str:
+    event_label = _event_label(event)
+    prefix = f"رویداد: {event_label}\n" if event_label else ""
+    return f"{prefix}{_format_order_text(order)}"
+
+
+def _format_customer_order_event_text(order, event: Optional[str]) -> str:
+    vendor_name = getattr(order.vendor, "name", "") or "-"
+    status_text = _status_label(order.status)
+    if event == "ORDER_CREATED":
+        return f"سفارش شما ثبت شد ✅\nکد سفارش: {order.short_code}\nفروشنده: {vendor_name}\nوضعیت: {status_text}"
+    if event == "ORDER_PAYMENT_VERIFIED":
+        return f"پرداخت سفارش {order.short_code} تایید شد.\nوضعیت فعلی: {status_text}"
+    if event:
+        return f"به‌روزرسانی سفارش {order.short_code} ({_event_label(event)}):\nوضعیت: {status_text}"
+    return f"به‌روزرسانی سفارش {order.short_code}:\nوضعیت: {status_text}"
+
+
+def send_order_notification_to_vendor(order, event: Optional[str] = None) -> None:
     chat_id = getattr(order.vendor, "telegram_chat_id", "") or ""
     if not chat_id:
         logger.info("No vendor Telegram chat configured for vendor_id=%s", order.vendor_id)
         return
 
-    text = _format_order_text(order)
+    text = _format_vendor_admin_order_event_text(order, event)
     send_message(chat_id=chat_id, text=text, reply_markup=build_order_action_keyboard(order))
 
 
-def send_order_notification_to_admin(order) -> None:
+def send_order_notification_to_admin(order, event: Optional[str] = None) -> None:
     admin_chat_id = settings.TELEGRAM_ADMIN_CHAT_ID
     if not admin_chat_id:
         logger.info("TELEGRAM_ADMIN_CHAT_ID not set; skipping admin notification")
         return
 
-    text = f"سفارش جدید/به‌روزرسانی #{order.id}\nوضعیت: {_status_label(order.status)}"
+    text = _format_vendor_admin_order_event_text(order, event)
     send_message(chat_id=str(admin_chat_id), text=text, reply_markup=build_order_action_keyboard(order))
+
+
+def send_order_notification_to_customer(order, event: Optional[str] = None) -> None:
+    tg_profile = getattr(order.user, "telegram", None)
+    chat_id = getattr(tg_profile, "telegram_user_id", None)
+    if not chat_id:
+        logger.info("No Telegram profile for user_id=%s; skipping customer notification", order.user_id)
+        return
+    text = _format_customer_order_event_text(order, event)
+    send_message(chat_id=str(chat_id), text=text)
+
+
+def dispatch_order_event(order, event: Optional[str] = None) -> None:
+    send_order_notification_to_vendor(order, event=event)
+    send_order_notification_to_admin(order, event=event)
+    send_order_notification_to_customer(order, event=event)

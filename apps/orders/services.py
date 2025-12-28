@@ -1,6 +1,8 @@
 import math
 from typing import Optional, Tuple
 
+from django.conf import settings
+
 from addresses.models import Address
 from catalog.models import Product
 from core.models import AppSetting
@@ -33,28 +35,51 @@ ORDER_STATUS_EVENTS = {
 }
 
 
+def _order_tracking_reference(order: Order) -> str:
+    delivery = getattr(order, "delivery", None)
+    if delivery:
+        if delivery.tracking_url:
+            return delivery.tracking_url
+        if delivery.tracking_code:
+            return delivery.tracking_code
+    return getattr(order, "short_code", "") or str(order.id)
+
+
+def _send_order_creation_sms(order: Order) -> None:
+    customer_body_id = getattr(settings, "SMS_CUSTOMER_ORDER_CREATED_BODY_ID", 412520)
+    vendor_body_id = getattr(settings, "SMS_VENDOR_ORDER_CREATED_BODY_ID", 412519)
+
+    tracking_reference = _order_tracking_reference(order)
+    customer_phone = getattr(order.user, "phone", "") or ""
+    if customer_phone:
+        sms.send_pattern_sms(
+            mobile=customer_phone,
+            body_id=customer_body_id,
+            params=[order.short_code, tracking_reference],
+        )
+
+    vendor_phone = getattr(order.vendor, "primary_phone_number", "") or ""
+    vendor_name = getattr(order.vendor, "name", "") or ""
+    if vendor_phone:
+        sms.send_pattern_sms(
+            mobile=vendor_phone,
+            body_id=vendor_body_id,
+            params=[vendor_name, order.short_code],
+        )
+
+
 def notify_order_created(order: Order) -> None:
-    telegram.send_order_notification_to_vendor(order)
-    telegram.send_order_notification_to_admin(order)
-    sms.send_sms(mobile=order.user.phone, text=f"سفارش شما ثبت شد. کد سفارش: {order.short_code}")
+    telegram.dispatch_order_event(order, event="ORDER_CREATED")
+    _send_order_creation_sms(order)
 
 
 def handle_order_status_change(order: Order, changed_by_user=None) -> None:
     event = ORDER_STATUS_EVENTS.get(order.status)
-    if order.status in {"CONFIRMED", "PREPARING", "READY", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED", "FAILED"}:
-        telegram.send_order_notification_to_vendor(order)
-        telegram.send_order_notification_to_admin(order)
+    telegram.dispatch_order_event(order, event=event)
 
-    if order.status in {"CONFIRMED", "OUT_FOR_DELIVERY", "DELIVERED"}:
-        status_texts = {
-            "CONFIRMED": "تایید شد",
-            "OUT_FOR_DELIVERY": "در حال ارسال",
-            "DELIVERED": "تحویل داده شد",
-        }
-        sms.send_sms(
-            mobile=order.user.phone,
-            text=f"وضعیت سفارش شما: {status_texts.get(order.status, order.status)}",
-        )
+
+def notify_payment_verified(order: Order) -> None:
+    telegram.dispatch_order_event(order, event="ORDER_PAYMENT_VERIFIED")
 
 
 def _haversine_distance_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
