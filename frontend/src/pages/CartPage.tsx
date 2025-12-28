@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 
-import { useCart } from "../state/cart";
+import { type ItemModifier, useCart } from "../state/cart";
 
 export function CartPage() {
   const items = useCart((s) => s.items);
@@ -32,13 +32,14 @@ export function CartPage() {
           <>
             <div className="card" style={{ display: "grid", gap: 12 }}>
               {items.map((item) => (
-                <div key={item.productId} className="cart-row">
+                <div key={`${item.productId}-${summarizeModifiers(item.options) || "plain"}`} className="cart-row">
                   <div className="cart-row-info">
                     <div className="cart-row-title">
                       <h3>{item.title}</h3>
                       <span className="pill soft">مجموع {formatCurrency(item.price * item.quantity)}</span>
                     </div>
                     <p className="muted">قیمت هر عدد: {formatCurrency(item.price)}</p>
+                    {renderModifiers(item.options)}
                   </div>
                   <div className="cart-row-actions">
                     <label className="input-label compact">
@@ -47,11 +48,15 @@ export function CartPage() {
                         type="number"
                         min={1}
                         value={item.quantity}
-                        onChange={(e) => updateQty(item.productId, Number(e.target.value))}
+                        onChange={(e) => updateQty(item.productId, Number(e.target.value), item.options)}
                         className="input-field dense"
                       />
                     </label>
-                    <button type="button" className="cart-remove" onClick={() => remove(item.productId)}>
+                    <button
+                      type="button"
+                      className="cart-remove"
+                      onClick={() => remove(item.productId, item.options)}
+                    >
                       <span aria-hidden>✕</span>
                       حذف
                     </button>
@@ -79,4 +84,45 @@ export function CartPage() {
 
 function formatCurrency(amount: number) {
   return Intl.NumberFormat("fa-IR", { style: "currency", currency: "IRR", maximumFractionDigits: 0 }).format(amount);
+}
+
+function summarizeModifiers(modifiers?: ItemModifier[]) {
+  if (!modifiers || modifiers.length === 0) return "";
+  return modifiers
+    .map((mod) => {
+      if (!mod?.label) return null;
+      const qty = mod.quantity ?? 1;
+      if (mod.type === "sauce") return `sauce:${mod.key}:qty:${qty}`;
+      if (mod.type === "drink") return `drink:${mod.key}:qty:${qty}`;
+      return `${mod.label}:qty:${qty}`;
+    })
+    .filter(Boolean)
+    .join("|");
+}
+
+function renderModifiers(modifiers?: ItemModifier[]) {
+  if (!modifiers || modifiers.length === 0) return null;
+  const labels = modifiers
+    .map((mod) => {
+      if (!mod?.label) return null;
+      const qty = mod.quantity ?? 1;
+      const lineTotal = (mod.price || 0) * qty;
+      if (mod.type === "sauce") {
+        const size = mod.size_grams ? ` (${mod.size_grams} گرم)` : "";
+        const priceNote = lineTotal ? ` - ${formatCurrency(lineTotal)}` : "";
+        return `سس: ${mod.label}${size}${qty > 1 ? ` × ${qty}` : ""}${priceNote}`;
+      }
+      if (mod.type === "drink") {
+        const priceNote = lineTotal ? ` - ${formatCurrency(lineTotal)}` : "";
+        return `نوشیدنی: ${mod.label}${qty > 1 ? ` × ${qty}` : ""}${priceNote}`;
+      }
+      return mod.label;
+    })
+    .filter(Boolean);
+  if (!labels.length) return null;
+  return (
+    <p className="muted" style={{ margin: "6px 0 0" }}>
+      {labels.join(" • ")}
+    </p>
+  );
 }
