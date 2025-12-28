@@ -9,30 +9,29 @@ import { type ItemModifier, useCart } from "../state/cart";
 import { useLocationStore } from "../state/location";
 
 const SAUCE_OPTIONS = [
-  { key: "garlic_lemon", label: "سس سیر و لیمو", sizeGrams: 30, price: 15000 },
-  { key: "mango", label: "سس انبه", sizeGrams: 30, price: 15000 },
-  { key: "herby", label: "سس سبزیجات", sizeGrams: 30, price: 15000 },
-  { key: "pepper", label: "سس فلفلی", sizeGrams: 30, price: 15000 },
-  { key: "tomato_roast", label: "سس گوجه کبابی", sizeGrams: 30, price: 15000 },
-  { key: "greek_yogurt", label: "سس ماست یونانی", sizeGrams: 30, price: 15000 },
-  { key: "no_sauce", label: "سس نمی‌خواهم", price: 0 },
+  { key: "garlic_lemon", label: "سس سیر و لیمو (۳۰ گرم)", sizeGrams: 30 },
+  { key: "mango", label: "سس انبه (۳۰ گرم)", sizeGrams: 30 },
+  { key: "herby", label: "سس سبزیجات (۳۰ گرم)", sizeGrams: 30 },
+  { key: "pepper", label: "سس فلفلی (۳۰ گرم)", sizeGrams: 30 },
+  { key: "tomato_roast", label: "سس گوجه کبابی (۳۰ گرم)", sizeGrams: 30 },
+  { key: "greek_yogurt", label: "سس ماست یونانی (۳۰ گرم)", sizeGrams: 30 },
+  { key: "no_sauce", label: "سس نمی‌خواهم" },
 ] as const;
 
 const DRINK_OPTIONS = [
-  { key: "zero", label: "زیرو", price: 25000 },
-  { key: "water", label: "آب معدنی", price: 10000 },
-  { key: "malt_delight", label: "مالت دلایت", price: 28000 },
-  { key: "no_drink", label: "نمی‌خواهم نوشیدنی", price: 0 },
+  { key: "zero", label: "زیرو" },
+  { key: "water", label: "آب معدنی" },
+  { key: "malt_delight", label: "مالت دلایت" },
+  { key: "no_drink", label: "نمی‌خواهم نوشیدنی" },
 ] as const;
 
 const NO_SAUCE_KEY = "no_sauce";
-const NO_DRINK_KEY = "no_drink";
 
 type ProductSummary = ServiceabilityResponse["menu_products"][number];
 type SelectionState = {
   product: ProductSummary;
-  sauces: Record<string, number>;
-  drinks: Record<string, number>;
+  sauceKey: string;
+  drinkKey: string;
 };
 
 export function MenuPage() {
@@ -67,81 +66,29 @@ export function MenuPage() {
   }, [service?.menu_products]);
 
   const openOptionSelector = (product: ProductSummary) => {
-    setSelection({ product, sauces: {}, drinks: {} });
+    setSelection({ product, sauceKey: "", drinkKey: "" });
   };
 
   const closeOptionSelector = () => setSelection(null);
 
-  const updateSauce = (key: string, qty: number) => {
-    setSelection((prev) => {
-      if (!prev) return prev;
-      const nextSauces = { ...(prev.sauces || {}) };
-      if (key === NO_SAUCE_KEY) {
-        if (qty > 0) {
-          nextSauces[NO_SAUCE_KEY] = 1;
-          Object.keys(nextSauces).forEach((sauceKey) => {
-            if (sauceKey !== NO_SAUCE_KEY) delete nextSauces[sauceKey];
-          });
-        } else {
-          delete nextSauces[NO_SAUCE_KEY];
-        }
-      } else {
-        if (nextSauces[NO_SAUCE_KEY]) {
-          delete nextSauces[NO_SAUCE_KEY];
-        }
-        if (qty > 0) {
-          nextSauces[key] = qty;
-        } else {
-          delete nextSauces[key];
-        }
-      }
-      return { ...prev, sauces: nextSauces };
-    });
-  };
-
-  const updateDrink = (key: string, qty: number) => {
-    setSelection((prev) => {
-      if (!prev) return prev;
-      const nextDrinks = { ...(prev.drinks || {}) };
-      if (key === NO_DRINK_KEY) {
-        if (qty > 0) {
-          nextDrinks[NO_DRINK_KEY] = 1;
-          Object.keys(nextDrinks).forEach((drinkKey) => {
-            if (drinkKey !== NO_DRINK_KEY) delete nextDrinks[drinkKey];
-          });
-        } else {
-          delete nextDrinks[NO_DRINK_KEY];
-        }
-      } else {
-        if (nextDrinks[NO_DRINK_KEY]) {
-          delete nextDrinks[NO_DRINK_KEY];
-        }
-        if (qty > 0) {
-          nextDrinks[key] = qty;
-        } else {
-          delete nextDrinks[key];
-        }
-      }
-      return { ...prev, drinks: nextDrinks };
-    });
-  };
-
   const handleConfirmSelection = () => {
     if (!selection) return;
-    const modifiers = buildModifiers(selection);
-    const { valid, error } = validateSelection(modifiers);
-    if (!valid) {
-      setFeedback(error || "انتخاب‌ها کامل نیست.");
-      return;
+    const sauce = SAUCE_OPTIONS.find((opt) => opt.key === selection.sauceKey);
+    if (!sauce) return;
+    const needsDrink = sauce.key === NO_SAUCE_KEY;
+    if (needsDrink && !selection.drinkKey) return;
+    const modifiers: ItemModifier[] = [
+      { type: "sauce", key: sauce.key, label: sauce.label, size_grams: sauce.sizeGrams },
+    ];
+    if (needsDrink) {
+      const drink = DRINK_OPTIONS.find((opt) => opt.key === selection.drinkKey);
+      if (!drink) return;
+      modifiers.push({ type: "drink", key: drink.key, label: drink.label });
     }
-    const modifiersTotal = modifiers.reduce(
-      (sum, mod) => sum + (mod.price || 0) * (mod.quantity ?? 1),
-      0,
-    );
     addToCart({
       productId: selection.product.id,
       title: selection.product.name_fa,
-      price: (selection.product.base_price || 0) + modifiersTotal,
+      price: selection.product.base_price || 0,
       quantity: 1,
       options: modifiers,
     });
@@ -277,90 +224,43 @@ export function MenuPage() {
             <div className="modal-body">
               <section className="choice-section">
                 <p className="muted" style={{ margin: "0 0 8px" }}>
-                  ابتدا غذای بدون سس انتخاب می‌شود. یک یا چند سس ۳۰ گرمی را برگزینید (امکان انتخاب چندباره یک سس نیز هست):
+                  ابتدا غذای بدون سس انتخاب می‌شود. یک سس ۳۰ گرمی را الزاما برگزینید:
                 </p>
                 <div className="choice-list">
-                  {SAUCE_OPTIONS.map((opt) => {
-                    const qty = selection.sauces[opt.key] || 0;
-                    const isNoSauce = opt.key === NO_SAUCE_KEY;
-                    const disabled = isNoSauce ? false : selection.sauces[NO_SAUCE_KEY] > 0;
-                    return (
-                      <label key={opt.key} className="choice-card">
-                        <input
-                          type="checkbox"
-                          checked={qty > 0}
-                          disabled={disabled}
-                          onChange={(e) => updateSauce(opt.key, e.target.checked ? 1 : 0)}
-                        />
-                        <div className="choice-meta">
-                          <strong>{opt.label}</strong>
-                          <p className="muted" style={{ margin: "4px 0 0" }}>
-                            {isNoSauce ? "بدون سس" : `${opt.sizeGrams ?? 30} گرم`} • {formatCurrency(opt.price)}
-                          </p>
-                        </div>
-                        {!isNoSauce ? (
-                          <input
-                            type="number"
-                            min={1}
-                            max={5}
-                            value={qty > 0 ? qty : ""}
-                            placeholder="تعداد"
-                            onChange={(e) => updateSauce(opt.key, Math.max(0, Number(e.target.value) || 0))}
-                            className="input-field dense"
-                            style={{ width: 80 }}
-                            disabled={disabled}
-                          />
-                        ) : null}
-                      </label>
-                    );
-                  })}
+                  {SAUCE_OPTIONS.map((opt) => (
+                    <label key={opt.key} className="choice-card">
+                      <input
+                        type="radio"
+                        name="sauce"
+                        checked={selection.sauceKey === opt.key}
+                        onChange={() => setSelection((prev) => (prev ? { ...prev, sauceKey: opt.key, drinkKey: "" } : prev))}
+                      />
+                      <span>{opt.label}</span>
+                    </label>
+                  ))}
                 </div>
               </section>
 
-              <section className="choice-section">
-                <p className="muted" style={{ margin: "0 0 8px" }}>
-                  نوشیدنی را انتخاب کنید (امکان چند گزینه و چند عدد وجود دارد). اگر «بدون سس» را زده‌اید، انتخاب نوشیدنی الزامی است.
-                </p>
-                <div className="choice-list">
-                  {DRINK_OPTIONS.map((opt) => {
-                    const qty = selection.drinks[opt.key] || 0;
-                    const isNoDrink = opt.key === NO_DRINK_KEY;
-                    const hasOtherDrinks = Object.entries(selection.drinks).some(
-                      ([key, val]) => key !== NO_DRINK_KEY && val > 0,
-                    );
-                    const disabled = isNoDrink ? hasOtherDrinks : selection.drinks[NO_DRINK_KEY] > 0;
-                    return (
+              {selection.sauceKey === NO_SAUCE_KEY ? (
+                <section className="choice-section">
+                  <p className="muted" style={{ margin: "0 0 8px" }}>
+                    بدون سس انتخاب شد؛ یکی از نوشیدنی‌های زیر را انتخاب کنید:
+                  </p>
+                  <div className="choice-list">
+                    {DRINK_OPTIONS.map((opt) => (
                       <label key={opt.key} className="choice-card">
                         <input
-                          type="checkbox"
-                          checked={qty > 0}
-                          disabled={disabled}
-                          onChange={(e) => updateDrink(opt.key, e.target.checked ? 1 : 0)}
+                          type="radio"
+                          name="drink"
+                          checked={selection.drinkKey === opt.key}
+                          onChange={() => setSelection((prev) => (prev ? { ...prev, drinkKey: opt.key } : prev))}
                         />
-                        <div className="choice-meta">
-                          <strong>{opt.label}</strong>
-                          <p className="muted" style={{ margin: "4px 0 0" }}>
-                            {formatCurrency(opt.price)}
-                          </p>
-                        </div>
-                        {!isNoDrink ? (
-                          <input
-                            type="number"
-                            min={1}
-                            max={5}
-                            value={qty > 0 ? qty : ""}
-                            placeholder="تعداد"
-                            onChange={(e) => updateDrink(opt.key, Math.max(0, Number(e.target.value) || 0))}
-                            className="input-field dense"
-                            style={{ width: 80 }}
-                            disabled={disabled}
-                          />
-                        ) : null}
+                        <span>{opt.label}</span>
                       </label>
-                    );
-                  })}
-                </div>
-              </section>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
             </div>
             <div className="modal-actions">
               <button type="button" className="ghost-button" onClick={closeOptionSelector}>
@@ -385,66 +285,4 @@ export function MenuPage() {
 function formatCurrency(amount?: number | null) {
   const value = amount ?? 0;
   return Intl.NumberFormat("fa-IR", { style: "currency", currency: "IRR", maximumFractionDigits: 0 }).format(value);
-}
-
-function findSauceOption(key: string) {
-  return SAUCE_OPTIONS.find((opt) => opt.key === key);
-}
-
-function findDrinkOption(key: string) {
-  return DRINK_OPTIONS.find((opt) => opt.key === key);
-}
-
-function buildModifiers(selection: SelectionState): ItemModifier[] {
-  const sauceEntries = Object.entries(selection.sauces || {}).filter(([, qty]) => qty > 0);
-  const drinkEntries = Object.entries(selection.drinks || {}).filter(([, qty]) => qty > 0);
-  const modifiers: ItemModifier[] = [];
-
-  sauceEntries.forEach(([key, qty]) => {
-    const opt = findSauceOption(key);
-    modifiers.push({
-      type: "sauce",
-      key,
-      label: opt?.label || "سس",
-      size_grams: opt?.sizeGrams,
-      price: opt?.price,
-      quantity: qty,
-    });
-  });
-
-  drinkEntries.forEach(([key, qty]) => {
-    const opt = findDrinkOption(key);
-    modifiers.push({
-      type: "drink",
-      key,
-      label: opt?.label || "نوشیدنی",
-      price: opt?.price,
-      quantity: qty,
-    });
-  });
-
-  return modifiers.sort((a, b) => `${a.type}-${a.key}`.localeCompare(`${b.type}-${b.key}`));
-}
-
-function validateSelection(modifiers: ItemModifier[]): { valid: boolean; error?: string } {
-  const hasSauce = modifiers.some((m) => m.type === "sauce" && m.key !== NO_SAUCE_KEY && (m.quantity ?? 0) > 0);
-  const noSauce = modifiers.some((m) => m.type === "sauce" && m.key === NO_SAUCE_KEY && (m.quantity ?? 0) > 0);
-  const drinks = modifiers.filter((m) => m.type === "drink" && m.key !== NO_DRINK_KEY && (m.quantity ?? 0) > 0);
-  const noDrink = modifiers.some((m) => m.type === "drink" && m.key === NO_DRINK_KEY && (m.quantity ?? 0) > 0);
-
-  if (!hasSauce && !noSauce) {
-    return { valid: false, error: "انتخاب حداقل یک سس الزامی است." };
-  }
-  if (noDrink && drinks.length) {
-    return { valid: false, error: "یا نوشیدنی انتخاب کنید یا گزینه «نمی‌خواهم»، هر دو با هم ممکن نیست." };
-  }
-  if (noSauce) {
-    if (noDrink) {
-      return { valid: false, error: "برای حالت بدون سس باید نوشیدنی واقعی انتخاب شود." };
-    }
-    if (drinks.length === 0) {
-      return { valid: false, error: "بدون سس انتخاب شده است؛ لطفاً حداقل یک نوشیدنی اضافه کنید." };
-    }
-  }
-  return { valid: true };
 }
