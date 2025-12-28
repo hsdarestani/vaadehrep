@@ -6,6 +6,7 @@ import type {
   ServiceabilityResponse,
   SessionResponse,
   Vendor,
+  VendorOrder,
   VerifyLoginResponse,
 } from "./types";
 
@@ -30,4 +31,7 @@ export const endpoints = {
     }),
   verifyOtp: (payload: { phone: string; code: string; device_id?: string; device_title?: string }) =>
     api.post<VerifyLoginResponse>("/accounts/verify-login/", payload),
+  vendorOrders: () => api.get<VendorOrder[]>("/orders/vendor-orders/"),
+  updateVendorOrderStatus: (id: string, status: string) =>
+    api.post<VendorOrder>(`/orders/vendor-orders/${id}/status/`, { status }),
 };

@@ -631,16 +631,29 @@ def _handle_order_status_callback(chat_id, data: str):
         telegram.send_message(chat_id=str(chat_id), text="وضعیت سفارش قبلاً روی همین حالت است.")
         return HttpResponse(status=status.HTTP_200_OK)
 
-    valid_statuses = {
-        "CONFIRMED",
-        "PREPARING",
-        "READY",
-        "OUT_FOR_DELIVERY",
-        "DELIVERED",
-        "CANCELLED",
-    }
+    is_vendor_chat = str(chat_id) == str(vendor_chat_id)
+    valid_statuses = (
+        {"PREPARING", "OUT_FOR_DELIVERY"}
+        if is_vendor_chat
+        else {"CONFIRMED", "PREPARING", "READY", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"}
+    )
     if target_status not in valid_statuses:
-        telegram.send_message(chat_id=str(chat_id), text="دستور ناشناخته است.")
+        telegram.send_message(
+            chat_id=str(chat_id),
+            text="برای فروشنده فقط گزینه‌های «در حال آماده‌سازی» و «ارسال شد» فعال است." if is_vendor_chat else "دستور ناشناخته است.",
+        )
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    if order.status in {"CANCELLED", "DELIVERED"}:
+        telegram.send_message(chat_id=str(chat_id), text="امکان تغییر وضعیت این سفارش وجود ندارد.")
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    if is_vendor_chat and target_status == "PREPARING" and order.status not in {"PLACED", "CONFIRMED"}:
+        telegram.send_message(chat_id=str(chat_id), text="اول پرداخت و تایید انجام شود، سپس آماده‌سازی را شروع کنید.")
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    if is_vendor_chat and target_status == "OUT_FOR_DELIVERY" and order.status != "PREPARING":
+        telegram.send_message(chat_id=str(chat_id), text="سفارش باید در حال آماده‌سازی باشد تا ارسال شود.")
         return HttpResponse(status=status.HTTP_200_OK)
 
     previous_status = order.status
@@ -650,13 +663,13 @@ def _handle_order_status_callback(chat_id, data: str):
         order=order,
         from_status=previous_status,
         to_status=order.status,
-        changed_by_type="VENDOR" if str(chat_id) == str(vendor_chat_id) else "ADMIN",
+        changed_by_type="VENDOR" if is_vendor_chat else "ADMIN",
     )
     handle_order_status_change(order)
     telegram.send_message(
         chat_id=str(chat_id),
         text=f"وضعیت سفارش به {telegram.status_label(order.status)} تغییر کرد.",
-        reply_markup=telegram.build_order_action_keyboard(order),
+        reply_markup=telegram.build_order_action_keyboard(order, for_vendor=is_vendor_chat),
     )
     return HttpResponse(status=status.HTTP_200_OK)
 
