@@ -18,6 +18,8 @@ export type ItemModifier = {
   key: string;
   label: string;
   size_grams?: number;
+  price?: number;
+  quantity?: number;
 };
 
 type CartState = {
