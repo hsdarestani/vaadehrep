@@ -91,10 +91,9 @@ function summarizeModifiers(modifiers?: ItemModifier[]) {
   return modifiers
     .map((mod) => {
       if (!mod?.label) return null;
-      const qty = mod.quantity ?? 1;
-      if (mod.type === "sauce") return `sauce:${mod.key}:qty:${qty}`;
-      if (mod.type === "drink") return `drink:${mod.key}:qty:${qty}`;
-      return `${mod.label}:qty:${qty}`;
+      if (mod.type === "sauce") return `sauce:${mod.key}`;
+      if (mod.type === "drink") return `drink:${mod.key}`;
+      return mod.label;
     })
     .filter(Boolean)
     .join("|");
@@ -105,16 +104,12 @@ function renderModifiers(modifiers?: ItemModifier[]) {
   const labels = modifiers
     .map((mod) => {
       if (!mod?.label) return null;
-      const qty = mod.quantity ?? 1;
-      const lineTotal = (mod.price || 0) * qty;
       if (mod.type === "sauce") {
         const size = mod.size_grams ? ` (${mod.size_grams} گرم)` : "";
-        const priceNote = lineTotal ? ` - ${formatCurrency(lineTotal)}` : "";
-        return `سس: ${mod.label}${size}${qty > 1 ? ` × ${qty}` : ""}${priceNote}`;
+        return `سس: ${mod.label}${size}`;
       }
       if (mod.type === "drink") {
-        const priceNote = lineTotal ? ` - ${formatCurrency(lineTotal)}` : "";
-        return `نوشیدنی: ${mod.label}${qty > 1 ? ` × ${qty}` : ""}${priceNote}`;
+        return `نوشیدنی: ${mod.label}`;
       }
       return mod.label;
     })
