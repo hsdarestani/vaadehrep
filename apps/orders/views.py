@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
-from rest_framework import serializers, status, viewsets
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -18,6 +18,7 @@ from orders.services import (
     suggest_products_for_user,
 )
 from vendors.models import Vendor
+from vendors.services import get_active_vendor_staff
 from rest_framework_simplejwt.tokens import RefreshToken
 from core.utils import normalize_phone
 
@@ -60,6 +61,17 @@ class OrderDeliverySerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
+
+
+class IsVendorStaff(BasePermission):
+    message = "دسترسی فروشنده تایید نشد."
+
+    def has_permission(self, request, view):
+        staff = get_active_vendor_staff(request.user)
+        if staff:
+            setattr(request, "vendor_staff", staff)
+            return True
+        return False
 
 
 class OrderSerializer(serializers.ModelSerializer):
@@ -123,6 +135,75 @@ class OrderSerializer(serializers.ModelSerializer):
         if isinstance(payment_meta, dict):
             return payment_meta.get("payment_url") or payment_meta.get("paymentUrl") or payment_meta.get("url")
         return None
+
+
+class VendorOrderSerializer(OrderSerializer):
+    customer_name = serializers.SerializerMethodField()
+    customer_phone = serializers.SerializerMethodField()
+    delivery_address_text = serializers.SerializerMethodField()
+    delivery_lat = serializers.SerializerMethodField()
+    delivery_lng = serializers.SerializerMethodField()
+    delivery_notes = serializers.SerializerMethodField()
+
+    class Meta(OrderSerializer.Meta):
+        fields = OrderSerializer.Meta.fields + [
+            "customer_name",
+            "customer_phone",
+            "delivery_address_text",
+            "delivery_lat",
+            "delivery_lng",
+            "delivery_notes",
+        ]
+        read_only_fields = fields
+
+    def _get_address(self, obj):
+        return getattr(obj, "delivery_address", None)
+
+    def get_customer_name(self, obj):
+        address = self._get_address(obj)
+        if address and address.receiver_name:
+            return address.receiver_name
+        return getattr(obj.user, "full_name", "") or "مشتری"
+
+    def get_customer_phone(self, obj):
+        address = self._get_address(obj)
+        if address and address.receiver_phone:
+            return address.receiver_phone
+        return getattr(obj.user, "phone", "")
+
+    def get_delivery_address_text(self, obj):
+        address = self._get_address(obj)
+        if not address:
+            return ""
+        if address.full_text:
+            return address.full_text
+        parts = [address.city, address.district, address.street, address.alley, address.building]
+        return " ".join([part for part in parts if part]).strip()
+
+    def _get_coordinates(self, obj):
+        address = self._get_address(obj)
+        if address and address.latitude is not None and address.longitude is not None:
+            return float(address.latitude), float(address.longitude)
+        meta = obj.meta or {}
+        customer_location = meta.get("customer_location") if isinstance(meta, dict) else None
+        if isinstance(customer_location, dict):
+            lat = customer_location.get("latitude")
+            lng = customer_location.get("longitude")
+            if lat is not None and lng is not None:
+                return float(lat), float(lng)
+        return None, None
+
+    def get_delivery_lat(self, obj):
+        lat, _ = self._get_coordinates(obj)
+        return lat
+
+    def get_delivery_lng(self, obj):
+        _, lng = self._get_coordinates(obj)
+        return lng
+
+    def get_delivery_notes(self, obj):
+        address = self._get_address(obj)
+        return getattr(address, "notes", "") or ""
 
 
 class OrderItemInputSerializer(serializers.Serializer):
@@ -489,6 +570,76 @@ class OrderViewSet(viewsets.ModelViewSet):
         if getattr(self, "issued_tokens", None):
             data["auth"] = self.issued_tokens
         return Response(data, status=status.HTTP_201_CREATED, headers=headers)
+
+
+class VendorOrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    serializer_class = VendorOrderSerializer
+    permission_classes = [IsAuthenticated, IsVendorStaff]
+    queryset = Order.objects.none()
+
+    def _get_vendor_staff(self):
+        return getattr(self.request, "vendor_staff", None) or get_active_vendor_staff(self.request.user)
+
+    def get_queryset(self):
+        staff = self._get_vendor_staff()
+        if not staff:
+            return Order.objects.none()
+        qs = (
+            Order.objects.filter(vendor=staff.vendor)
+            .select_related("delivery", "user", "vendor", "delivery_address")
+            .prefetch_related("items")
+            .order_by("-placed_at")
+        )
+        status_filter = self.request.query_params.get("status")
+        if status_filter != "all":
+            qs = qs.filter(status__in=set(ACTIVE_ORDER_STATUSES) | {"DELIVERED", "CANCELLED", "FAILED"})
+        return qs
+
+    @action(detail=True, methods=["post"], url_path="status")
+    def set_status(self, request, *args, **kwargs):
+        staff = self._get_vendor_staff()
+        order = self.get_object()
+        if not staff or order.vendor_id != staff.vendor_id:
+            return Response({"detail": "دسترسی فروشنده تایید نشد."}, status=status.HTTP_403_FORBIDDEN)
+
+        target_status = str(request.data.get("status") or "").upper()
+        allowed_statuses = {"PREPARING", "OUT_FOR_DELIVERY"}
+        if target_status not in allowed_statuses:
+            return Response(
+                {"detail": "فقط می‌توانید سفارش را «در حال آماده‌سازی» یا «ارسال شد» کنید."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if order.status in {"CANCELLED", "DELIVERED"}:
+            return Response({"detail": "امکان تغییر وضعیت این سفارش وجود ندارد."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if target_status == "PREPARING" and order.status not in {"PLACED", "CONFIRMED", "PREPARING"}:
+            return Response(
+                {"detail": "سفارش در وضعیت فعلی قابل ثبت به‌عنوان در حال آماده‌سازی نیست."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if target_status == "OUT_FOR_DELIVERY" and order.status not in {"PREPARING", "READY", "CONFIRMED"}:
+            return Response(
+                {"detail": "سفارش باید در حال آماده‌سازی باشد تا به وضعیت ارسال‌شده برود."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        previous_status = order.status
+        if target_status != previous_status:
+            order.status = target_status
+            order.save(update_fields=["status"])
+            OrderStatusHistory.objects.create(
+                order=order,
+                from_status=previous_status,
+                to_status=order.status,
+                changed_by_type="VENDOR",
+                changed_by_user=request.user,
+            )
+            handle_order_status_change(order, changed_by_user=request.user)
+
+        serializer = self.get_serializer(order)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class OrderItemViewSet(viewsets.ModelViewSet):

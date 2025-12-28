@@ -13,6 +13,7 @@ import { OrdersPage } from "./pages/OrdersPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { VendorPage } from "./pages/VendorPage";
 import { TermsPage } from "./pages/TermsPage";
+import { VendorDashboardPage } from "./pages/VendorDashboardPage";
 import { useAuth } from "./state/auth";
 
 function App() {
@@ -35,6 +36,7 @@ function App() {
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/vendor" element={<VendorPage />} />
+        <Route path="/vendor/panel" element={<VendorDashboardPage />} />
         <Route path="/payment-result" element={<PaymentResultPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

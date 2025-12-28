@@ -14,12 +14,14 @@ from integrations.services import sms
 from django.conf import settings
 from rest_framework_simplejwt.tokens import RefreshToken
 from core.utils import normalize_phone
+from vendors.services import get_active_vendor_staff
 
 User = get_user_model()
 
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    vendor_role = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -34,8 +36,9 @@ class UserSerializer(serializers.ModelSerializer):
             "created_at",
             "last_login_at",
             "password",
+            "vendor_role",
         ]
-        read_only_fields = ["id", "created_at", "last_login_at", "is_staff"]
+        read_only_fields = ["id", "created_at", "last_login_at", "is_staff", "vendor_role"]
 
     def create(self, validated_data):
         password = validated_data.pop("password", None)
@@ -55,6 +58,18 @@ class UserSerializer(serializers.ModelSerializer):
             instance.set_password(password)
         instance.save()
         return instance
+
+    def get_vendor_role(self, obj):
+        staff = get_active_vendor_staff(obj)
+        if not staff:
+            return None
+        vendor = staff.vendor
+        return {
+            "vendor_id": vendor.id,
+            "vendor_name": vendor.name,
+            "vendor_slug": vendor.slug,
+            "role": staff.role,
+        }
 
 
 class TelegramUserSerializer(serializers.ModelSerializer):
