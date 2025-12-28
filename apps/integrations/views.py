@@ -6,8 +6,8 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import serializers, status, viewsets
-from rest_framework.decorators import api_view
-from rest_framework.permissions import IsAdminUser
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny, IsAdminUser
 
 from accounts.models import TelegramUser, User
 from addresses.models import Address
@@ -263,6 +263,7 @@ class ProviderHealthCheckViewSet(viewsets.ModelViewSet):
 
 @csrf_exempt
 @api_view(["POST"])
+@permission_classes([AllowAny])
 def telegram_webhook(request, secret: str):
     if settings.TELEGRAM_WEBHOOK_SECRET and secret != settings.TELEGRAM_WEBHOOK_SECRET:
         return HttpResponse(status=status.HTTP_403_FORBIDDEN)
