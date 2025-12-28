@@ -186,7 +186,7 @@ PAYMENT_RETURN_URL = os.getenv("PAYMENT_RETURN_URL", "https://vaadeh.com/payment
 # Deployment URLs
 SITE_BASE_URL = os.getenv("SITE_BASE_URL", "https://vaadeh.com/")
 FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "")
-TELEGRAM_WEBHOOK_URL = os.getenv("TELEGRAM_WEBHOOK_URL", "")
+TELEGRAM_WEBHOOK_URL = os.getenv("TELEGRAM_WEBHOOK_URL", "https://vaadeh.com/api/integrations/telegram/webhook/dfbdfok2-39gj238=g2h439g4jg=089jb/")
 
 
 SMS_OTP_BODY_ID = int("411750")
