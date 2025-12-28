@@ -17,11 +17,6 @@ urlpatterns = [
     path("api/integrations/", include(("apps.integrations.urls", "integrations"), namespace="integrations")),
     path("api/events/", include(("apps.events.urls", "events"), namespace="events")),
     path(
-        f"telegram/webhook/<str:secret>/",
-        integration_views.telegram_webhook,
-        name="telegram-webhook",
-    ),
-    path(
         "payments/callback/",
         integration_views.payment_callback,
         name="payment-callback",
