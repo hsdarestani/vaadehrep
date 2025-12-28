@@ -901,6 +901,22 @@ def _build_fake_request(user):
     return Request(drf_request)
 
 
+def _first_error_message(errors):
+    if isinstance(errors, dict):
+        for key, value in errors.items():
+            message = _first_error_message(value)
+            if message:
+                if key == "non_field_errors":
+                    return str(message)
+                return f"{key}: {message}"
+    if isinstance(errors, list):
+        for item in errors:
+            message = _first_error_message(item)
+            if message:
+                return str(message)
+    return str(errors) if errors else None
+
+
 def _place_order_from_state(tg_user: TelegramUser):
     state = tg_user.state or {}
     user = tg_user.user
@@ -948,13 +964,22 @@ def _place_order_from_state(tg_user: TelegramUser):
         "items": items_payload,
         "customer_phone": user.phone,
         "accept_terms": True,
-        "customer_location": coords,
         "source": "TELEGRAM",
     }
+    if coords is not None:
+        payload["customer_location"] = coords
 
     serializer = OrderCreateSerializer(data=payload, context={"request": _build_fake_request(user)})
     if not serializer.is_valid():
-        return None, None, "خطا در ثبت سفارش."
+        error_message = _first_error_message(serializer.errors)
+        logger.warning(
+            "Telegram order validation failed for user_id=%s vendor_id=%s address_id=%s errors=%s",
+            user.id,
+            vendor_id,
+            address_id,
+            serializer.errors,
+        )
+        return None, None, error_message or "خطا در ثبت سفارش."
 
     order = serializer.save()
     OrderStatusHistory.objects.create(
