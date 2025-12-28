@@ -25,6 +25,7 @@ from orders.services import (
     ACTIVE_ORDER_STATUSES,
     evaluate_vendor_serviceability,
     notify_order_created,
+    notify_payment_verified,
     pick_nearest_available_vendor,
 )
 from rest_framework.request import Request
@@ -780,6 +781,7 @@ def payment_callback(request):
 
     previous_status = order.status
     previous_payment_status = order.payment_status
+    payment_verified_now = payment_status == "PAID" and previous_payment_status != "PAID"
     if payment_status == "PAID":
         order.payment_status = "PAID"
         if order.status in {"PENDING_PAYMENT", "FAILED"}:
@@ -804,6 +806,9 @@ def payment_callback(request):
             changed_by_type="SYSTEM",
         )
         handle_order_status_change(order)
+
+    if payment_verified_now:
+        notify_payment_verified(order)
 
     response_payload = {
         "status": "ok",
