@@ -964,9 +964,10 @@ def _place_order_from_state(tg_user: TelegramUser):
         "items": items_payload,
         "customer_phone": user.phone,
         "accept_terms": True,
-        "customer_location": coords,
         "source": "TELEGRAM",
     }
+    if coords is not None:
+        payload["customer_location"] = coords
 
     serializer = OrderCreateSerializer(data=payload, context={"request": _build_fake_request(user)})
     if not serializer.is_valid():
