@@ -1,3 +1,4 @@
+import axios from "axios";
 import { FormEvent, useMemo, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 
@@ -26,6 +27,7 @@ export function AddressesPage() {
   const [editingCoords, setEditingCoords] = useState<{ latitude: number; longitude: number } | undefined>();
   const [editingError, setEditingError] = useState("");
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [actionError, setActionError] = useState("");
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -66,6 +68,7 @@ export function AddressesPage() {
       setEditingCoords(undefined);
     }
     setEditingError("");
+    setActionError("");
   };
 
   const cancelEdit = () => {
@@ -76,11 +79,22 @@ export function AddressesPage() {
     setEditingError("");
   };
 
+  const extractErrorMessage = (err: unknown, fallback: string) => {
+    if (axios.isAxiosError(err)) {
+      const detail = err.response?.data?.detail;
+      if (typeof detail === "string" && detail.trim()) {
+        return detail;
+      }
+    }
+    return fallback;
+  };
+
   const handleUpdate = async (event: FormEvent) => {
     event.preventDefault();
     if (!editingId) return;
     setIsSavingEdit(true);
     setEditingError("");
+    setActionError("");
     try {
       await updateAddress(editingId, {
         title: editingTitle,
@@ -90,9 +104,27 @@ export function AddressesPage() {
       });
       cancelEdit();
     } catch (err) {
-      setEditingError("خطا در ذخیره تغییرات آدرس. لطفاً دوباره تلاش کنید.");
+      const message = extractErrorMessage(
+        err,
+        "خطا در ذخیره تغییرات آدرس. لطفاً دوباره تلاش کنید.",
+      );
+      setEditingError(message);
+      setActionError(message);
     } finally {
       setIsSavingEdit(false);
+    }
+  };
+
+  const handleRemove = async (id: number) => {
+    setActionError("");
+    try {
+      await removeAddress(id);
+    } catch (err) {
+      const message = extractErrorMessage(
+        err,
+        "امکان حذف آدرس وجود ندارد. لطفاً بعداً دوباره تلاش کنید.",
+      );
+      setActionError(message);
     }
   };
 
@@ -106,6 +138,12 @@ export function AddressesPage() {
           </h1>
           <p className="section-subtitle">آدرس‌های ذخیره‌شده و موقعیت انتخاب‌شده‌ات در این صفحه نمایش داده می‌شوند.</p>
         </div>
+
+        {actionError ? (
+          <div className="card" style={{ marginBottom: 12, background: "var(--bg-soft, #f8f9fa)" }}>
+            <p style={{ margin: 0, color: "#b91c1c", fontWeight: 700 }}>{actionError}</p>
+          </div>
+        ) : null}
 
         <div className="location-banner">
           <div>
@@ -236,7 +274,7 @@ export function AddressesPage() {
                       <button
                         className="ghost-button"
                         type="button"
-                        onClick={() => removeAddress(address.id)}
+                        onClick={() => void handleRemove(address.id)}
                         disabled={!canModify}
                       >
                         حذف
