@@ -45,6 +45,14 @@ logger = logging.getLogger(__name__)
 AUTH_STATE_KEYS = {"otp_verified", "awaiting_otp", "pending_phone"}
 
 
+def _contact_request_keyboard():
+    return {
+        "keyboard": [[{"text": "اشتراک‌گذاری شماره 📞", "request_contact": True}]],
+        "resize_keyboard": True,
+        "one_time_keyboard": True,
+    }
+
+
 def _update_state(
     tg_user: TelegramUser,
     new_values: dict,
@@ -132,7 +140,16 @@ def _send_main_menu(tg_user: TelegramUser):
 def _prompt_for_phone(chat_id):
     telegram.send_message(
         chat_id=str(chat_id),
-        text="برای ادامه، شماره موبایل ایران (شروع با 09) را وارد کنید تا کد تایید پیامک شود.",
+        text="برای ادامه، شماره موبایل ایران (شروع با 09) را وارد کنید یا کانتکت خود را بفرستید تا کد تایید پیامک شود.",
+        reply_markup=_contact_request_keyboard(),
+    )
+    return HttpResponse(status=status.HTTP_200_OK)
+
+
+def _prompt_for_iran_phone_text(chat_id):
+    telegram.send_message(
+        chat_id=str(chat_id),
+        text="شماره ارسال‌شده ایران نیست. لطفاً شماره موبایل ایران را به صورت متن (شروع با 09) وارد کنید تا کد تایید پیامک شود.",
     )
     return HttpResponse(status=status.HTTP_200_OK)
 
@@ -526,7 +543,7 @@ def telegram_webhook(request, secret: str):
         phone = normalize_phone(contact.get("phone_number"))
         if _is_iranian_phone(phone):
             return _link_phone_without_otp(chat_id, phone, chat)
-        return _send_otp_for_phone(chat_id, phone, chat)
+        return _prompt_for_iran_phone_text(chat_id)
 
     if not tg_user:
         if text:
