@@ -5,7 +5,7 @@ import { useAddressBook } from "../hooks/useAddressBook";
 import { LocationPicker } from "../components/LocationPicker";
 import { useGeolocation } from "../hooks/useGeolocation";
 import { useAuth } from "../state/auth";
-import { type ItemModifier, useCart, useCheckout } from "../state/cart";
+import { useCart, useCheckout } from "../state/cart";
 import { useLocationStore } from "../state/location";
 import { useServiceability } from "../state/serviceability";
 
@@ -336,13 +336,12 @@ export function CheckoutPage() {
                       </p>
                     ) : (
                       cartItems.map((item) => (
-                        <div key={`${item.productId}-${summarizeModifiers(item.options) || "plain"}`} className="summary-item">
+                        <div key={item.productId} className="summary-item">
                           <div>
                             <strong>{item.title}</strong>
                             <p className="muted" style={{ margin: 0 }}>
                               ×{item.quantity} • {formatCurrency(item.price)}
                             </p>
-                            {renderModifiers(item.options)}
                           </div>
                           <strong>{formatCurrency(item.price * item.quantity)}</strong>
                         </div>
@@ -420,40 +419,4 @@ export function CheckoutPage() {
 
 function formatCurrency(amount: number) {
   return Intl.NumberFormat("fa-IR", { style: "currency", currency: "IRR", maximumFractionDigits: 0 }).format(amount);
-}
-
-function summarizeModifiers(modifiers?: ItemModifier[]) {
-  if (!modifiers || modifiers.length === 0) return "";
-  return modifiers
-    .map((mod) => {
-      if (!mod?.label) return null;
-      if (mod.type === "sauce") return `sauce:${mod.key}`;
-      if (mod.type === "drink") return `drink:${mod.key}`;
-      return mod.label;
-    })
-    .filter(Boolean)
-    .join("|");
-}
-
-function renderModifiers(modifiers?: ItemModifier[]) {
-  if (!modifiers || modifiers.length === 0) return null;
-  const labels = modifiers
-    .map((mod) => {
-      if (!mod?.label) return null;
-      if (mod.type === "sauce") {
-        const size = mod.size_grams ? ` (${mod.size_grams} گرم)` : "";
-        return `سس: ${mod.label}${size}`;
-      }
-      if (mod.type === "drink") {
-        return `نوشیدنی: ${mod.label}`;
-      }
-      return mod.label;
-    })
-    .filter(Boolean);
-  if (!labels.length) return null;
-  return (
-    <p className="muted" style={{ margin: 0 }}>
-      {labels.join(" • ")}
-    </p>
-  );
 }

@@ -10,61 +10,36 @@ export type CartItem = {
   title: string;
   price: number;
   quantity: number;
-  options: ItemModifier[];
-};
-
-export type ItemModifier = {
-  type: "sauce" | "drink";
-  key: string;
-  label: string;
-  size_grams?: number;
+  options: unknown[];
 };
 
 type CartState = {
   items: CartItem[];
   add: (item: CartItem) => void;
-  updateQty: (productId: number, quantity: number, options?: ItemModifier[]) => void;
-  remove: (productId: number, options?: ItemModifier[]) => void;
+  updateQty: (productId: number, quantity: number) => void;
+  remove: (productId: number) => void;
   clear: () => void;
 };
-
-function serializeOptions(opts?: ItemModifier[]) {
-  return JSON.stringify(opts || []);
-}
-
-function optionsMatch(a?: ItemModifier[], b?: ItemModifier[]) {
-  return serializeOptions(a) === serializeOptions(b);
-}
 
 export const useCart = create<CartState>((set) => ({
   items: [],
   add: (item) =>
     set((state) => {
-      const incomingOptsKey = serializeOptions(item.options);
-      const existing = state.items.find(
-        (i) => i.productId === item.productId && serializeOptions(i.options) === incomingOptsKey,
-      );
+      const existing = state.items.find((i) => i.productId === item.productId);
       if (existing) {
         return {
           items: state.items.map((i) =>
-            i.productId === item.productId && serializeOptions(i.options) === incomingOptsKey
-              ? { ...i, quantity: i.quantity + item.quantity }
-              : i,
+            i.productId === item.productId ? { ...i, quantity: i.quantity + item.quantity } : i,
           ),
         };
       }
       return { items: [...state.items, item] };
     }),
-  updateQty: (productId, quantity, options) =>
+  updateQty: (productId, quantity) =>
     set((state) => ({
-      items: state.items.map((i) =>
-        i.productId === productId && optionsMatch(i.options, options) ? { ...i, quantity } : i,
-      ),
+      items: state.items.map((i) => (i.productId === productId ? { ...i, quantity } : i)),
     })),
-  remove: (productId, options) =>
-    set((state) => ({
-      items: state.items.filter((i) => !(i.productId === productId && optionsMatch(i.options, options))),
-    })),
+  remove: (productId) => set((state) => ({ items: state.items.filter((i) => i.productId !== productId) })),
   clear: () => set({ items: [] }),
 }));
 

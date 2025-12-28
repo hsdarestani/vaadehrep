@@ -43,22 +43,6 @@ from accounts.models import LoginOTP
 logger = logging.getLogger(__name__)
 
 AUTH_STATE_KEYS = {"otp_verified", "awaiting_otp", "pending_phone"}
-SAUCE_OPTIONS = [
-    {"key": "garlic_lemon", "label": "سس سیر و لیمو (۳۰ گرم)", "size_grams": 30},
-    {"key": "mango", "label": "سس انبه (۳۰ گرم)", "size_grams": 30},
-    {"key": "herby", "label": "سس سبزیجات (۳۰ گرم)", "size_grams": 30},
-    {"key": "pepper", "label": "سس فلفلی (۳۰ گرم)", "size_grams": 30},
-    {"key": "tomato_roast", "label": "سس گوجه کبابی (۳۰ گرم)", "size_grams": 30},
-    {"key": "greek_yogurt", "label": "سس ماست یونانی (۳۰ گرم)", "size_grams": 30},
-    {"key": "no_sauce", "label": "سس نمی‌خواهم"},
-]
-DRINK_OPTIONS = [
-    {"key": "zero", "label": "زیرو"},
-    {"key": "water", "label": "آب معدنی"},
-    {"key": "malt_delight", "label": "مالت دلایت"},
-    {"key": "no_drink", "label": "نمی‌خواهم نوشیدنی"},
-]
-NO_SAUCE_KEY = "no_sauce"
 
 
 def _contact_request_keyboard():
@@ -107,46 +91,6 @@ def _extract_address_details(text: str) -> tuple[str, str]:
 def _is_iranian_phone(phone: str) -> bool:
     normalized = normalize_phone(phone)
     return len(normalized) == 11 and normalized.startswith("09")
-
-
-def _find_option(options: list[dict], key: str | int):
-    return next((opt for opt in options if str(opt.get("key")) == str(key)), None)
-
-
-def _build_sauce_keyboard(product_id: int) -> dict:
-    return {
-        "inline_keyboard": [
-            [{"text": opt["label"], "callback_data": f"sauce:{product_id}:{opt['key']}"}] for opt in SAUCE_OPTIONS
-        ]
-    }
-
-
-def _build_drink_keyboard(product_id: int) -> dict:
-    return {
-        "inline_keyboard": [
-            [{"text": opt["label"], "callback_data": f"drink:{product_id}:{opt['key']}"}] for opt in DRINK_OPTIONS
-        ]
-    }
-
-
-def _format_modifiers(modifiers):
-    if not modifiers or not isinstance(modifiers, (list, tuple)):
-        return ""
-    labels = []
-    for mod in modifiers:
-        if not isinstance(mod, dict):
-            continue
-        label = mod.get("label")
-        if not label:
-            continue
-        if mod.get("type") == "sauce":
-            size = f" ({mod.get('size_grams')} گرم)" if mod.get("size_grams") else ""
-            labels.append(f"سس: {label}{size}")
-        elif mod.get("type") == "drink":
-            labels.append(f"نوشیدنی: {label}")
-        else:
-            labels.append(str(label))
-    return "، ".join(labels)
 
 
 def _make_otp_code(length: int = 6) -> str:
@@ -781,7 +725,6 @@ def _handle_menu_callback(chat_id, data: str):
                     {
                         "product_id": str(item.product_id),
                         "quantity": item.quantity,
-                        "modifiers": getattr(item, "modifiers", None),
                     }
                     for item in last_order.items.all()
                 ],
@@ -866,96 +809,6 @@ def _handle_menu_callback(chat_id, data: str):
         )
         return HttpResponse(status=status.HTTP_200_OK)
 
-    if data.startswith("sauce:"):
-        parts = data.split(":")
-        if len(parts) != 3:
-            return HttpResponse(status=status.HTTP_200_OK)
-        _, product_id, sauce_key = parts
-        product = Product.objects.filter(id=product_id, is_active=True, is_available=True, is_available_today=True).first()
-        if not product:
-            telegram.send_message(chat_id=str(chat_id), text="این آیتم در دسترس نیست.")
-            return HttpResponse(status=status.HTTP_200_OK)
-        state = tg_user.state or {}
-        if state.get("vendor_id") and str(state["vendor_id"]) != str(product.vendor_id):
-            telegram.send_message(chat_id=str(chat_id), text="آدرس یا فروشنده انتخاب شده با این آیتم سازگار نیست.")
-            return HttpResponse(status=status.HTTP_200_OK)
-        sauce = _find_option(SAUCE_OPTIONS, sauce_key)
-        if not sauce:
-            telegram.send_message(chat_id=str(chat_id), text="انتخاب سس نامعتبر است.")
-            return HttpResponse(status=status.HTTP_200_OK)
-        if not state.get("cart"):
-            state["cart"] = []
-        state.pop("pending_selection", None)
-        if sauce.get("key") == NO_SAUCE_KEY:
-            state["pending_selection"] = {"product_id": product.id, "vendor_id": product.vendor_id, "sauce": sauce}
-            tg_user.state = state
-            tg_user.save(update_fields=["state"])
-            telegram.send_message(
-                chat_id=str(chat_id),
-                text="با انتخاب «بدون سس»، باید یک نوشیدنی انتخاب کنید:",
-                reply_markup=_build_drink_keyboard(product.id),
-            )
-            return HttpResponse(status=status.HTTP_200_OK)
-        modifiers = [
-            {"type": "sauce", "key": sauce.get("key"), "label": sauce.get("label"), "size_grams": sauce.get("size_grams")}
-        ]
-        state["cart"].append({"product_id": product.id, "quantity": 1, "modifiers": modifiers})
-        tg_user.state = state
-        tg_user.save(update_fields=["state"])
-        telegram.send_message(
-            chat_id=str(chat_id),
-            text=f"{product.name_fa} با {sauce.get('label')} به سبد خرید اضافه شد.",
-            reply_markup=telegram.build_menu_keyboard(
-                Product.objects.filter(vendor=product.vendor, is_active=True, is_available=True, is_available_today=True).order_by(
-                    "sort_order", "id"
-                )
-            ),
-        )
-        return HttpResponse(status=status.HTTP_200_OK)
-
-    if data.startswith("drink:"):
-        parts = data.split(":")
-        if len(parts) != 3:
-            return HttpResponse(status=status.HTTP_200_OK)
-        _, product_id, drink_key = parts
-        product = Product.objects.filter(id=product_id, is_active=True, is_available=True, is_available_today=True).first()
-        if not product:
-            telegram.send_message(chat_id=str(chat_id), text="این آیتم در دسترس نیست.")
-            return HttpResponse(status=status.HTTP_200_OK)
-        state = tg_user.state or {}
-        pending = state.get("pending_selection") or {}
-        if str(pending.get("product_id")) != str(product.id):
-            telegram.send_message(chat_id=str(chat_id), text="برای این آیتم انتخاب سس/نوشیدنی مجدد لازم است.")
-            return HttpResponse(status=status.HTTP_200_OK)
-        sauce = pending.get("sauce") or _find_option(SAUCE_OPTIONS, pending.get("sauce_key"))
-        if not sauce or sauce.get("key") != NO_SAUCE_KEY:
-            telegram.send_message(chat_id=str(chat_id), text="ابتدا گزینه «بدون سس» را انتخاب کنید.")
-            return HttpResponse(status=status.HTTP_200_OK)
-        drink = _find_option(DRINK_OPTIONS, drink_key)
-        if not drink:
-            telegram.send_message(chat_id=str(chat_id), text="نوشیدنی انتخاب شده معتبر نیست.")
-            return HttpResponse(status=status.HTTP_200_OK)
-        if not state.get("cart"):
-            state["cart"] = []
-        modifiers = [
-            {"type": "sauce", "key": sauce.get("key"), "label": sauce.get("label"), "size_grams": sauce.get("size_grams")},
-            {"type": "drink", "key": drink.get("key"), "label": drink.get("label")},
-        ]
-        state["cart"].append({"product_id": product.id, "quantity": 1, "modifiers": modifiers})
-        state.pop("pending_selection", None)
-        tg_user.state = state
-        tg_user.save(update_fields=["state"])
-        telegram.send_message(
-            chat_id=str(chat_id),
-            text=f"{product.name_fa} بدون سس و با نوشیدنی «{drink.get('label')}» اضافه شد.",
-            reply_markup=telegram.build_menu_keyboard(
-                Product.objects.filter(vendor=product.vendor, is_active=True, is_available=True, is_available_today=True).order_by(
-                    "sort_order", "id"
-                )
-            ),
-        )
-        return HttpResponse(status=status.HTTP_200_OK)
-
     if data.startswith("product:"):
         product_id = data.split(":")[1]
         product = Product.objects.filter(id=product_id, is_active=True, is_available=True, is_available_today=True).first()
@@ -969,15 +822,16 @@ def _handle_menu_callback(chat_id, data: str):
         if state.get("vendor_id") and str(state["vendor_id"]) != str(product.vendor_id):
             telegram.send_message(chat_id=str(chat_id), text="آدرس یا فروشنده انتخاب شده با این آیتم سازگار نیست.")
             return HttpResponse(status=status.HTTP_200_OK)
-        state.pop("pending_selection", None)
-        state["pending_selection"] = {"product_id": product.id, "vendor_id": product.vendor_id}
+        state["cart"].append({"product_id": product.id, "quantity": 1})
         tg_user.state = state
         tg_user.save(update_fields=["state"])
 
         telegram.send_message(
             chat_id=str(chat_id),
-            text="غذای بدون سس انتخاب شد. یک سس ۳۰ گرمی را انتخاب کنید:",
-            reply_markup=_build_sauce_keyboard(product.id),
+            text=f"{product.name_fa} به سبد خرید اضافه شد.",
+            reply_markup=telegram.build_menu_keyboard(Product.objects.filter(
+                vendor=product.vendor, is_active=True, is_available=True, is_available_today=True
+            ).order_by("sort_order", "id")),
         )
         return HttpResponse(status=status.HTTP_200_OK)
 
@@ -999,9 +853,6 @@ def _handle_menu_callback(chat_id, data: str):
             line = prod.base_price * qty
             total += line
             lines.append(f"{prod.name_fa} × {qty} = {line:,}")
-            modifiers_text = _format_modifiers(item.get("modifiers"))
-            if modifiers_text:
-                lines.append(f"  - {modifiers_text}")
         lines.append(f"هزینه ارسال: {state.get('delivery_fee') or 0:,}")
         lines.append(f"جمع کل: {total:,}")
         lines.append(f"روش ارسال: {'پس‌کرایه' if state.get('delivery_type') == 'OUT_OF_ZONE_SNAPP' else 'پیک داخلی'}")
@@ -1035,7 +886,7 @@ def _handle_menu_callback(chat_id, data: str):
             if not prod:
                 continue
             qty = int(item.get("quantity") or 1)
-            items_payload.append({"product": prod.id, "quantity": qty, "modifiers": item.get("modifiers")})
+            items_payload.append({"product": prod.id, "quantity": qty})
             subtotal += prod.base_price * qty
 
         order, payment_url, error = _place_order_from_state(tg_user)
@@ -1052,7 +903,7 @@ def _handle_menu_callback(chat_id, data: str):
         _update_state(
             tg_user,
             {"cart": []},
-            clear_keys=["pending_address", "awaiting_address_details", "pending_selection"],
+            clear_keys=["pending_address", "awaiting_address_details"],
         )
         return HttpResponse(status=status.HTTP_200_OK)
 
@@ -1119,7 +970,7 @@ def _place_order_from_state(tg_user: TelegramUser):
         if not prod:
             continue
         qty = int(item.get("quantity") or 1)
-        items_payload.append({"product": prod.id, "quantity": qty, "modifiers": item.get("modifiers")})
+        items_payload.append({"product": prod.id, "quantity": qty})
 
     if not items_payload:
         return None, None, "هیچ آیتم فعالی در سبد شما نیست."
