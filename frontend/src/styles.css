@@ -354,6 +354,10 @@ a {
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.06);
 }
 
+.api-card.checkout-card {
+  width: min(980px, 100%);
+}
+
 .api-card-head {
   text-align: center;
   display: grid;
@@ -393,6 +397,14 @@ a {
   outline: none;
   border-color: var(--brand-400);
   box-shadow: 0 0 0 4px rgba(105, 210, 139, 0.15);
+}
+
+.input-label.compact {
+  font-size: 13px;
+}
+
+.input-field.dense {
+  padding: 10px;
 }
 
 .api-actions {
@@ -1049,6 +1061,51 @@ a {
   border: 1px solid #e2e8f0;
 }
 
+.cart-row-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.cart-row-info {
+  display: grid;
+  gap: 6px;
+}
+
+.cart-row-actions {
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+  align-content: center;
+  min-width: 200px;
+}
+
+.cart-remove {
+  border-radius: 12px;
+  padding: 10px 12px;
+  border: 1px solid #fecdd3;
+  background: linear-gradient(135deg, #fff1f2, #ffe4e6);
+  color: #b91c1c;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.cart-remove:hover {
+  transform: translateY(-1px);
+  border-color: #fda4af;
+  box-shadow: 0 8px 16px rgba(249, 113, 122, 0.18);
+}
+
+.cart-remove:active {
+  transform: translateY(0);
+}
+
 .cart-summary {
   margin-top: 16px;
   display: flex;
@@ -1057,6 +1114,122 @@ a {
   gap: 12px;
   background: linear-gradient(90deg, rgba(105, 210, 139, 0.08), #fff);
   border: 1px solid #e2e8f0;
+}
+
+.checkout-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.checkout-main {
+  display: grid;
+  gap: 14px;
+}
+
+.checkout-panel {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.checkout-aside {
+  display: grid;
+  gap: 12px;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.checkout-summary-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+  background: linear-gradient(135deg, #f8fff9, #ffffff);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.05);
+}
+
+.summary-items {
+  display: grid;
+  gap: 10px;
+}
+
+.summary-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px dashed #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid #e2e8f0;
+}
+
+.summary-row.total {
+  border-top: 2px solid var(--brand-200);
+  font-size: 18px;
+}
+
+.inline-check {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px dashed #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.inline-check input {
+  margin-top: 4px;
+}
+
+@media (max-width: 960px) {
+  .checkout-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .checkout-aside {
+    order: -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .cart-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cart-row-actions {
+    min-width: 100%;
+    justify-items: stretch;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+
+  .cart-row-title {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
 .vendor-hero-media {
@@ -1436,6 +1609,12 @@ a {
   margin-bottom: 12px;
 }
 
+.location-banner.elevated {
+  background: linear-gradient(135deg, #f1fff5, #f8fafc);
+  border-style: solid;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.04);
+}
+
 .address-grid {
   display: grid;
   gap: 12px;
@@ -1469,6 +1648,13 @@ a {
   border-radius: 999px;
   background: var(--brand-50);
   border: 1px solid var(--brand-200);
+}
+
+.pill.soft {
+  background: #f0fdf4;
+  border-color: var(--brand-100);
+  color: var(--brand-700);
+  box-shadow: none;
 }
 
 .quick-add summary {

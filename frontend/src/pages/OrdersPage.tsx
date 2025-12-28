@@ -17,12 +17,8 @@ export function OrdersPage() {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
-  const handlePay = async (orderId: string, fallbackUrl?: string | null) => {
+  const handlePay = async (orderId: string) => {
     setPaymentError(null);
-    if (fallbackUrl) {
-      window.location.href = fallbackUrl;
-      return;
-    }
     setPayingId(orderId);
     try {
       const res = await endpoints.payForOrder(orderId);
@@ -101,7 +97,7 @@ export function OrdersPage() {
                     <button
                       className="secondary-button"
                       type="button"
-                      onClick={() => handlePay(order.id, order.payment_url)}
+                      onClick={() => handlePay(order.id)}
                       disabled={payingId === order.id}
                     >
                       {payingId === order.id ? "در حال اتصال به درگاه…" : "پرداخت سفارش"}

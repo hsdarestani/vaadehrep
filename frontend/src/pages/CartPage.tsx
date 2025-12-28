@@ -33,21 +33,29 @@ export function CartPage() {
             <div className="card" style={{ display: "grid", gap: 12 }}>
               {items.map((item) => (
                 <div key={item.productId} className="cart-row">
-                  <div style={{ flex: 1 }}>
-                    <h3>{item.title}</h3>
-                    <p className="muted">{formatCurrency(item.price)}</p>
+                  <div className="cart-row-info">
+                    <div className="cart-row-title">
+                      <h3>{item.title}</h3>
+                      <span className="pill soft">مجموع {formatCurrency(item.price * item.quantity)}</span>
+                    </div>
+                    <p className="muted">قیمت هر عدد: {formatCurrency(item.price)}</p>
                   </div>
-                  <input
-                    type="number"
-                    min={1}
-                    value={item.quantity}
-                    onChange={(e) => updateQty(item.productId, Number(e.target.value))}
-                    className="input-field"
-                    style={{ width: 90 }}
-                  />
-                  <button className="link" onClick={() => remove(item.productId)}>
-                    حذف
-                  </button>
+                  <div className="cart-row-actions">
+                    <label className="input-label compact">
+                      <span>تعداد</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={item.quantity}
+                        onChange={(e) => updateQty(item.productId, Number(e.target.value))}
+                        className="input-field dense"
+                      />
+                    </label>
+                    <button type="button" className="cart-remove" onClick={() => remove(item.productId)}>
+                      <span aria-hidden>✕</span>
+                      حذف
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
